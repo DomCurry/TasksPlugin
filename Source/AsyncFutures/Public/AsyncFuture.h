@@ -313,11 +313,8 @@ namespace UE::Tasks
 		{
 		}
 
-		//FOptions& Set(ENamedThreads::Type&& ThreadIn) { Thread = MoveTemp(ThreadIn); return *this; }
 		FOptions& Set(const ENamedThreads::Type ThreadIn) { Thread = ThreadIn; return *this; }
-		//FOptions& Set(FCancellationHandle&& HandleIn) { CancellationHandle = MoveTemp(HandleIn); return *this; }
 		FOptions& Set(const FCancellationHandle& HandleIn) { CancellationHandle = HandleIn; return *this; }
-		//FOptions& Set(EAsyncExecution&& ExecutionIn) { Execution = MoveTemp(ExecutionIn); return *this; }
 		FOptions& Set(const EAsyncExecution ExecutionIn) { Execution = ExecutionIn; return *this; }
 		
 		TOptional<FCancellationHandle> GetCancellation() const { return CancellationHandle; }

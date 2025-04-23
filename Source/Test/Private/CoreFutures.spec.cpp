@@ -94,122 +94,122 @@ void FAsyncFuturesSpec_Core::Define()
 		});
 
 	Describe("Continuations", [this]()
+	{
+		Describe("void", [this]()
 		{
-			Describe("void", [this]()
+			LatentIt("to void", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture().Then([]() {})
+				.Then([this, Done]()
 				{
-					LatentIt("to void", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture().Then([]() {})
-								.Then([this, Done]()
-									{
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-					LatentIt("to value", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture().Then([]() { return 5; })
-								.Then([this, Done](int32 Value)
-									{
-										TestEqual("Value", Value, 5);
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-					LatentIt("to result", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture().Then([]() { return UE::Tasks::TResult<int32>(5); })
-								.Then([this, Done](int32 Value)
-									{
-										TestEqual("Value", Value, 5);
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-					LatentIt("to future", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture().Then([]() { return UE::Tasks::MakeReadyFuture<int32>(5); })
-								.Then([this, Done](int32 Value)
-									{
-										TestEqual("Value", Value, 5);
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-				});
-			Describe("value", [this]()
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+			LatentIt("to value", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture().Then([]() { return 5; })
+				.Then([this, Done](int32 Value)
 				{
-					LatentIt("to void", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture<int32>(5).Then([](int32 Value) {})
-								.Then([this, Done]()
-									{
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-					LatentIt("to value", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture<int32>(5).Then([](int32 Value) { return Value; })
-								.Then([this, Done](int32 Value)
-									{
-										TestEqual("Value", Value, 5);
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-					LatentIt("to result", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture<int32>(5).Then([](int32 Value) { return UE::Tasks::TResult<int32>(Value); })
-								.Then([this, Done](int32 Value)
-									{
-										TestEqual("Value", Value, 5);
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-					LatentIt("to future", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture<int32>(5).Then([](int32 Value) { return UE::Tasks::MakeReadyFuture<int32>(Value); })
-								.Then([this, Done](int32 Value)
-									{
-										TestEqual("Value", Value, 5);
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-				});
-			Describe("result", [this]()
+					TestEqual("Value", Value, 5);
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+			LatentIt("to result", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture().Then([]() { return UE::Tasks::TResult<int32>(5); })
+				.Then([this, Done](int32 Value)
 				{
-					LatentIt("to void", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture<int32>(5).Then([](UE::Tasks::TResult<int32> Result) {})
-								.Then([this, Done]()
-									{
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-					LatentIt("to value", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture<int32>(5).Then([](UE::Tasks::TResult<int32> Result) { return Result.GetValue(); })
-								.Then([this, Done](int32 Value)
-									{
-										TestEqual("Value", Value, 5);
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-					LatentIt("to result", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture<int32>(5).Then([](UE::Tasks::TResult<int32> Result) { return UE::Tasks::TResult<int32>(Result.GetValue()); })
-								.Then([this, Done](int32 Value)
-									{
-										TestEqual("Value", Value, 5);
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-					LatentIt("to future", [this](const auto& Done)
-						{
-							UE::Tasks::MakeReadyFuture<int32>(5).Then([](UE::Tasks::TResult<int32> Result) { return UE::Tasks::MakeReadyFuture<int32>(Result.GetValue()); })
-								.Then([this, Done](int32 Value)
-									{
-										TestEqual("Value", Value, 5);
-										Done.Execute();
-									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
-						});
-				});
+					TestEqual("Value", Value, 5);
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+			LatentIt("to future", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture().Then([]() { return UE::Tasks::MakeReadyFuture<int32>(5); })
+				.Then([this, Done](int32 Value)
+				{
+					TestEqual("Value", Value, 5);
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
 		});
+		Describe("value", [this]()
+		{
+			LatentIt("to void", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture<int32>(5).Then([](int32 Value) {})
+				.Then([this, Done]()
+				{
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+			LatentIt("to value", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture<int32>(5).Then([](int32 Value) { return Value; })
+				.Then([this, Done](int32 Value)
+				{
+					TestEqual("Value", Value, 5);
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+			LatentIt("to result", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture<int32>(5).Then([](int32 Value) { return UE::Tasks::TResult<int32>(Value); })
+				.Then([this, Done](int32 Value)
+				{
+					TestEqual("Value", Value, 5);
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+			LatentIt("to future", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture<int32>(5).Then([](int32 Value) { return UE::Tasks::MakeReadyFuture<int32>(Value); })
+				.Then([this, Done](int32 Value)
+				{
+					TestEqual("Value", Value, 5);
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+		});
+		Describe("result", [this]()
+		{
+			LatentIt("to void", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture<int32>(5).Then([](UE::Tasks::TResult<int32> Result) {})
+				.Then([this, Done]()
+				{
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+			LatentIt("to value", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture<int32>(5).Then([](UE::Tasks::TResult<int32> Result) { return Result.GetValue(); })
+				.Then([this, Done](int32 Value)
+				{
+					TestEqual("Value", Value, 5);
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+			LatentIt("to result", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture<int32>(5).Then([](UE::Tasks::TResult<int32> Result) { return UE::Tasks::TResult<int32>(Result.GetValue()); })
+				.Then([this, Done](int32 Value)
+				{
+					TestEqual("Value", Value, 5);
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+			LatentIt("to future", [this](const auto& Done)
+			{
+				UE::Tasks::MakeReadyFuture<int32>(5).Then([](UE::Tasks::TResult<int32> Result) { return UE::Tasks::MakeReadyFuture<int32>(Result.GetValue()); })
+				.Then([this, Done](int32 Value)
+				{
+					TestEqual("Value", Value, 5);
+					Done.Execute();
+				}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+			});
+		});
+	});
 
 	Describe("Raw value lambdas", [this]()
 	{
