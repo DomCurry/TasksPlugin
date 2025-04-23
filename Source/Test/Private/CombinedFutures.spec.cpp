@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #include <CoreMinimal.h>
 #include <AsyncFutures.h>
 
@@ -32,19 +32,19 @@ void FAsyncFuturesSpec_Combined::Define()
 							TestTrue("Result is completed", Result.HasValue());
 							TestEqual("Total", Result.GetValue(), 7);
 							Done.Execute();
-						}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+						}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 			});
 
 		LatentIt("Fail", [this](const auto& Done)
 			{
-				UE::Tasks::WhenAll({ UE::Tasks::MakeReadyFuture(), UE::Tasks::MakeReadyFuture(), UE::Tasks::MakeErrorFuture<void>(UE::Tasks::Error(Code, Context, TEXT("Error Message"))) })
+				UE::Tasks::WhenAll({ UE::Tasks::MakeReadyFuture(), UE::Tasks::MakeReadyFuture(), UE::Tasks::MakeErrorFuture<void>(UE::Tasks::FError(Code, Context, TEXT("Error Message"))) })
 					.Then([this, Done](const UE::Tasks::TResult<void>& Result)
 						{
 							TestTrue("Result is an error", Result.HasError());
 							TestFalse("Result is completed", Result.HasValue());
 							TestEqual("Captured String", *(Result.GetError().GetMessage()), TEXT("Error Message"));
 							Done.Execute();
-						}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+						}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 			});
 		});
 
@@ -61,7 +61,7 @@ void FAsyncFuturesSpec_Combined::Define()
 							TestTrue("Result is completed", Result.HasValue());
 							TestEqual("Total", Result.GetValue(), 1);
 							Done.Execute();
-						}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+						}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 
 				//kick this off in another thread to avoid hitting the sleep on the test thread
 				UE::Tasks::Async([FirstPromise, SecondPromise]()
@@ -86,12 +86,12 @@ void FAsyncFuturesSpec_Combined::Define()
 							TestFalse("Result is completed", Result.HasValue());
 							TestEqual("Captured String", *(Result.GetError().GetMessage()), TEXT("Error Message"));
 							Done.Execute();
-						}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+						}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 
 				//kick this off in another thread to avoid hitting the sleep on the test thread
 				UE::Tasks::Async([FirstPromise, SecondPromise]()
 					{
-						FirstPromise.SetValue(UE::Tasks::Error(Code, Context, TEXT("Error Message")));
+						FirstPromise.SetValue(UE::Tasks::FError(Code, Context, TEXT("Error Message")));
 
 						//Force a sleep here to avoid the race condition.
 						FPlatformProcess::Sleep(0.2f);

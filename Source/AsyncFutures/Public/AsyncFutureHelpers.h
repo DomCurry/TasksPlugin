@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #pragma once
 #include <atomic>
 
@@ -65,7 +65,7 @@ namespace UE::Tasks
 	}
 
 	template <typename T>
-	TAsyncFuture<T> MakeErrorFuture(const Error& Value)
+	TAsyncFuture<T> MakeErrorFuture(const FError& Value)
 	{
 		TAsyncPromise<T> ErrorPromise = TAsyncPromise<T>();
 		ErrorPromise.SetValue(Value);
@@ -73,7 +73,7 @@ namespace UE::Tasks
 	}
 
 	template <typename T>
-	TAsyncFuture<T> MakeErrorFuture(Error&& Value)
+	TAsyncFuture<T> MakeErrorFuture(FError&& Value)
 	{
 		TAsyncPromise<T> ErrorPromise = TAsyncPromise<T>();
 		ErrorPromise.SetValue(MoveTemp(Value));
@@ -208,7 +208,7 @@ namespace UE::Tasks
 	{
 		if (Futures.Num() == 0)
 		{
-			return UE::Tasks::MakeErrorFuture<T>(Error(ERROR_CONTEXT_FUTURE, ERROR_INVALID_ARGUMENT, TEXT("UE::Tasks::WhenAny - Must have at least one element in the array.")));
+			return UE::Tasks::MakeErrorFuture<T>(FError(ERROR_CONTEXT_FUTURE, ERROR_INVALID_ARGUMENT, TEXT("UE::Tasks::WhenAny - Must have at least one element in the array.")));
 		}
 		auto PromiseRef = MakeShared<TAsyncPromise<T>, ESPMode::ThreadSafe>();
 		for (auto& Future : Futures)

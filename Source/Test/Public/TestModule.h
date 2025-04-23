@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"

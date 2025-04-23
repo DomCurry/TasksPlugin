@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #include "TestModule.h"
 #include <Modules/ModuleManager.h>
 

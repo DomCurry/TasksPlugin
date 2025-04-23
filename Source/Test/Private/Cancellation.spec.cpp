@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #include <CoreMinimal.h>
 #include <AsyncFutures.h>
 
@@ -22,7 +22,7 @@ void FAsyncFuturesSpec_Cancelling::Define()
 	{
 		UE::Tasks::TAsyncFuture<int32> Future = UE::Tasks::Async([]() {
 			return UE::Tasks::TResult<int32>(5);
-		}, UE::Tasks::FOptions(CancellationHandle));
+		}, UE::Tasks::FOptions().Set(CancellationHandle));
 
 		CancellationHandle.Cancel();
 
@@ -32,7 +32,7 @@ void FAsyncFuturesSpec_Cancelling::Define()
 			//It may, or may not, cancel before the value is set. This test is here to make sure that we handle the race condition.
 			TestTrue("Result result was cancelled or set", Result.HasValue() || Result.IsCancelled());
 			Done.Execute();
-		},UE::Tasks::FOptions(ENamedThreads::GameThread));
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Can cancel a Future", [this](const auto& Done)
@@ -43,7 +43,7 @@ void FAsyncFuturesSpec_Cancelling::Define()
 			//Force a sleep here to avoid the race condition described above - we want to ensure a cancel.
 			FPlatformProcess::Sleep(0.2f);
 			return UE::Tasks::TResult(5);
-		}, UE::Tasks::FOptions(CancellationHandle));
+		}, UE::Tasks::FOptions().Set(CancellationHandle));
 
 		CancellationHandle.Cancel();
 		Prm.SetValue();
@@ -52,7 +52,7 @@ void FAsyncFuturesSpec_Cancelling::Define()
 		{
 			TestTrue("Result result was cancelled", Result.IsCancelled());
 			Done.Execute();
-		}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Can cancel before the Future is set", [this](const auto& Done)
@@ -62,12 +62,12 @@ void FAsyncFuturesSpec_Cancelling::Define()
 		UE::Tasks::Async([]()
 		{
 			return UE::Tasks::TResult(5);
-		}, UE::Tasks::FOptions(CancellationHandle))
+		}, UE::Tasks::FOptions().Set(CancellationHandle))
 		.Then([this, Done](UE::Tasks::TResult<int32> Result)
 		{
 			TestTrue("Result result was cancelled or set", Result.IsCancelled());
 			Done.Execute();
-		}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Result Then is called after cancel", [this](const auto& Done)
@@ -76,7 +76,7 @@ void FAsyncFuturesSpec_Cancelling::Define()
 		UE::Tasks::TAsyncFuture<void> Future = Prm.GetFuture().Then([]()
 		{
 			return UE::Tasks::TResult(5);
-		}, UE::Tasks::FOptions(CancellationHandle))
+		}, UE::Tasks::FOptions().Set(CancellationHandle))
 		.Then([this](UE::Tasks::TResult<int32> Result)
 		{
 			ContinuationCalled = true;
@@ -91,7 +91,7 @@ void FAsyncFuturesSpec_Cancelling::Define()
 			TestTrue("Result result was cancelled or set", Result.IsCancelled());
 			TestTrue("Result-based continuation was called", ContinuationCalled);
 			Done.Execute();
-		}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Cancelled Then wont be called", [this](const auto& Done)
@@ -107,13 +107,13 @@ void FAsyncFuturesSpec_Cancelling::Define()
 		{
 			ContinuationCalled = true;
 			TestTrue("Cancelled Not called", false);
-		}, UE::Tasks::FOptions(CancellationHandle))
+		}, UE::Tasks::FOptions().Set(CancellationHandle))
 		.Then([this, Done](const UE::Tasks::TResult<void>& Result)
 		{
 			TestTrue("Result result was cancelled or set", Result.IsCancelled());
 			TestFalse("Value-based continuation was called", ContinuationCalled);
 			Done.Execute();
-		}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Result Then is called after cancelled Then", [this](const auto& Done)
@@ -127,7 +127,7 @@ void FAsyncFuturesSpec_Cancelling::Define()
 		.Then([this](UE::Tasks::TResult<int32> Result)
 		{
 			return Result;
-		}, UE::Tasks::FOptions(CancellationHandle))
+		}, UE::Tasks::FOptions().Set(CancellationHandle))
 		.Then([](UE::Tasks::TResult<int32> Result)
 		{
 			//Then result-based continuation is called with "Cancelled" status
@@ -138,7 +138,7 @@ void FAsyncFuturesSpec_Cancelling::Define()
 			TestTrue("Result is completed", Result.HasValue());
 			TestTrue("Then received was 'cancel' state", Result.GetValue());
 			Done.Execute();
-		}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Then is not called with raw value after Cancellation", [this](const auto& Done)
@@ -152,7 +152,7 @@ void FAsyncFuturesSpec_Cancelling::Define()
 		.Then([](UE::Tasks::TResult<int32> Result)
 		{
 			return Result;
-		}, UE::Tasks::FOptions(CancellationHandle))
+		}, UE::Tasks::FOptions().Set(CancellationHandle))
 		.Then([this](int32 Result)
 		{
 			ContinuationCalled = true;
@@ -163,6 +163,6 @@ void FAsyncFuturesSpec_Cancelling::Define()
 			TestTrue("Result is completed", Result.IsCancelled());
 			TestFalse("Then with raw value executed", ContinuationCalled);
 			Done.Execute();
-		}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 }

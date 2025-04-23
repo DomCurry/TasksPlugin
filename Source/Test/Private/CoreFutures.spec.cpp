@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #include <CoreMinimal.h>
 #include <AsyncFutures.h>
 
@@ -28,7 +28,7 @@ void FAsyncFuturesSpec_Core::Define()
 		{
 			TestTrue("Future is completed", Result.HasValue());
 			Done.Execute();
-		}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Will run future on Then and not before", [this](const auto& Done)
@@ -42,7 +42,7 @@ void FAsyncFuturesSpec_Core::Define()
 		{
 			TestEqual("Value", Result, 10);
 			Done.Execute();
-		}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Can pass result directly to next step", [this](const auto& Done)
@@ -62,7 +62,7 @@ void FAsyncFuturesSpec_Core::Define()
 			TestTrue("Result result TOptional is set", Result.HasValue());
 			TestEqual("Value", Result.GetValue(), 10);
 			Done.Execute();
-		}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Task with specified thread doesn't block that thread", [this](const auto& Done)
@@ -70,16 +70,16 @@ void FAsyncFuturesSpec_Core::Define()
 			UE::Tasks::TAsyncFuture<FDateTime> SlowTask = UE::Tasks::Async([]()
 			{
 				FPlatformProcess::Sleep(0.1f);
-			}, UE::Tasks::FOptions(ENamedThreads::AnyBackgroundThreadNormalTask))
+			}, UE::Tasks::FOptions().Set(ENamedThreads::AnyBackgroundThreadNormalTask))
 			.Then([]()
 			{
 				return FDateTime::UtcNow();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 
 			UE::Tasks::TAsyncFuture<FDateTime> FastTask = UE::Tasks::Async([]()
 			{
 				return FDateTime::UtcNow();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 
 			UE::Tasks::WhenAll<FDateTime>({ FastTask, SlowTask }).Then([this, Done](const UE::Tasks::TResult<TArray<FDateTime>>& Result)
 			{
@@ -90,7 +90,7 @@ void FAsyncFuturesSpec_Core::Define()
 				const FDateTime& SlowTime = Values[1];
 				TestLessThan(TEXT("Task Finish Time"), FastTime.GetTicks(), SlowTime.GetTicks());
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 	Describe("Continuations", [this]()
@@ -103,7 +103,7 @@ void FAsyncFuturesSpec_Core::Define()
 								.Then([this, Done]()
 									{
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 					LatentIt("to value", [this](const auto& Done)
 						{
@@ -112,7 +112,7 @@ void FAsyncFuturesSpec_Core::Define()
 									{
 										TestEqual("Value", Value, 5);
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 					LatentIt("to result", [this](const auto& Done)
 						{
@@ -121,7 +121,7 @@ void FAsyncFuturesSpec_Core::Define()
 									{
 										TestEqual("Value", Value, 5);
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 					LatentIt("to future", [this](const auto& Done)
 						{
@@ -130,7 +130,7 @@ void FAsyncFuturesSpec_Core::Define()
 									{
 										TestEqual("Value", Value, 5);
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 				});
 			Describe("value", [this]()
@@ -141,7 +141,7 @@ void FAsyncFuturesSpec_Core::Define()
 								.Then([this, Done]()
 									{
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 					LatentIt("to value", [this](const auto& Done)
 						{
@@ -150,7 +150,7 @@ void FAsyncFuturesSpec_Core::Define()
 									{
 										TestEqual("Value", Value, 5);
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 					LatentIt("to result", [this](const auto& Done)
 						{
@@ -159,7 +159,7 @@ void FAsyncFuturesSpec_Core::Define()
 									{
 										TestEqual("Value", Value, 5);
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 					LatentIt("to future", [this](const auto& Done)
 						{
@@ -168,7 +168,7 @@ void FAsyncFuturesSpec_Core::Define()
 									{
 										TestEqual("Value", Value, 5);
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 				});
 			Describe("result", [this]()
@@ -179,7 +179,7 @@ void FAsyncFuturesSpec_Core::Define()
 								.Then([this, Done]()
 									{
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 					LatentIt("to value", [this](const auto& Done)
 						{
@@ -188,7 +188,7 @@ void FAsyncFuturesSpec_Core::Define()
 									{
 										TestEqual("Value", Value, 5);
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 					LatentIt("to result", [this](const auto& Done)
 						{
@@ -197,7 +197,7 @@ void FAsyncFuturesSpec_Core::Define()
 									{
 										TestEqual("Value", Value, 5);
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 					LatentIt("to future", [this](const auto& Done)
 						{
@@ -206,7 +206,7 @@ void FAsyncFuturesSpec_Core::Define()
 									{
 										TestEqual("Value", Value, 5);
 										Done.Execute();
-									}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+									}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 						});
 				});
 		});
@@ -220,7 +220,7 @@ void FAsyncFuturesSpec_Core::Define()
 			{
 				TestEqual("Value", Value, 1);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can concatenate Then", [this](const auto& Done)
@@ -235,7 +235,7 @@ void FAsyncFuturesSpec_Core::Define()
 			{
 				TestEqual("Value on second Then", Result, 3);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can capture initial value and then concatenate void", [this](const auto& Done)
@@ -248,7 +248,7 @@ void FAsyncFuturesSpec_Core::Define()
 			.Then([this, Done]()
 			{
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can execute with no capture and then concatenate with capture", [this](const auto& Done)
@@ -262,11 +262,11 @@ void FAsyncFuturesSpec_Core::Define()
 			{
 				TestEqual("Value on second Then", Result, 5);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 	});
 
-	Describe("Value Or Error lambdas", [this]()
+	Describe("Value Or FError lambdas", [this]()
 	{
 		LatentIt("Can capture and return the value", [this](const auto& Done)
 		{
@@ -276,7 +276,7 @@ void FAsyncFuturesSpec_Core::Define()
 				TestTrue("Future is completed", Result.HasValue());
 				TestEqual("Value", Result.GetValue(), 1);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can concatenate Then", [this](const auto& Done)
@@ -292,7 +292,7 @@ void FAsyncFuturesSpec_Core::Define()
 				TestTrue("Future is completed", Result.HasValue());
 				TestEqual("Value on second Then", Result.GetValue(), 3);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can capture initial value and then concatenate void", [this](const auto& Done)
@@ -306,7 +306,7 @@ void FAsyncFuturesSpec_Core::Define()
 			{
 				TestTrue("Future is completed", Result.HasValue());
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can execute with no capture and then concatenate with capture", [this](const auto& Done)
@@ -321,7 +321,7 @@ void FAsyncFuturesSpec_Core::Define()
 				TestTrue("Future is completed", Result.HasValue());
 				TestEqual("Value on second Then", Result.GetValue(), 1);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can change future captured type", [this](const auto& Done)
@@ -335,7 +335,7 @@ void FAsyncFuturesSpec_Core::Define()
 				TestTrue("Future is completed", Result.HasValue());
 				TestEqual("Value on second Then", Result.GetValue(), 10);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 	});
 
@@ -352,7 +352,7 @@ void FAsyncFuturesSpec_Core::Define()
 			{
 				TestEqual("Value", MemberInt, 2);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can execute Async with return", [this](const auto& Done)
@@ -365,7 +365,7 @@ void FAsyncFuturesSpec_Core::Define()
 			{
 				TestEqual("Value", Result, 4);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can unwrap Async inside Then", [this](const auto& Done)
@@ -379,7 +379,7 @@ void FAsyncFuturesSpec_Core::Define()
 			{
 				TestEqual("Value on second Then", Result, TEXT("11"));
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can unwrap inside an unwrapped Async inside Then", [this](const auto& Done)
@@ -396,7 +396,7 @@ void FAsyncFuturesSpec_Core::Define()
 			{
 				TestEqual("Value on second Then", Result, 5);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can unwrap Async inside Async", [this](const auto& Done)
@@ -409,7 +409,7 @@ void FAsyncFuturesSpec_Core::Define()
 			{
 				TestEqual("Value on second Then", Result, TEXT("21"));
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Captured lambda value can be changed", [this](const auto& Done)
@@ -424,7 +424,7 @@ void FAsyncFuturesSpec_Core::Define()
 				TestTrue("Result was completed", Result.HasValue());
 				TestEqual("Captured value", MemberInt, 4);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 	});
 
@@ -434,7 +434,7 @@ void FAsyncFuturesSpec_Core::Define()
 		{
 			UE::Tasks::Async([this]()
 			{
-				return UE::Tasks::TResult<int32>(UE::Tasks::Error(Context, Code, TEXT("Error Message")));
+				return UE::Tasks::TResult<int32>(UE::Tasks::FError(Context, Code, TEXT("Error Message")));
 			})
 			.Then([this, Done](UE::Tasks::TResult<int32> Result)
 			{
@@ -443,7 +443,7 @@ void FAsyncFuturesSpec_Core::Define()
 				TestEqual("Error Context", Result.GetError().GetContext(), Context);
 				TestEqual("Error Message", *Result.GetError().GetMessage(), TEXT("Error Message"));
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Value Then wont be called on error", [this](const auto& Done)
@@ -452,7 +452,7 @@ void FAsyncFuturesSpec_Core::Define()
 
 			UE::Tasks::Async([this]()
 			{
-				return UE::Tasks::TResult<int32>(UE::Tasks::Error(Context, Code));
+				return UE::Tasks::TResult<int32>(UE::Tasks::FError(Context, Code));
 			})
 			.Then([this](int32 Result)
 			{
@@ -467,14 +467,14 @@ void FAsyncFuturesSpec_Core::Define()
 
 				TestFalse("Then Called", ContinuationCalled);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
-		LatentIt("Error can be passed through captured type change", [this](const auto& Done)
+		LatentIt("FError can be passed through captured type change", [this](const auto& Done)
 		{
 			UE::Tasks::Async([this]()
 			{
-				return UE::Tasks::TResult<int32>(UE::Tasks::Error(Context, Code));
+				return UE::Tasks::TResult<int32>(UE::Tasks::FError(Context, Code));
 			})
 			.Then([this](int32 Result)
 			{
@@ -486,14 +486,14 @@ void FAsyncFuturesSpec_Core::Define()
 				TestEqual("Error Code", Result.GetError().GetCode(), Code);
 				TestEqual("Error Context", Result.GetError().GetContext(), Context);
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 
 		LatentIt("Can handle error", [this](const auto& Done)
 		{
 			UE::Tasks::Async([this]()
 			{
-				return UE::Tasks::TResult<int32>(UE::Tasks::Error(Context, Code, TEXT("Error Message")));
+				return UE::Tasks::TResult<int32>(UE::Tasks::FError(Context, Code, TEXT("Error Message")));
 			})
 			.Then([](UE::Tasks::TResult<int32> Result)
 			{
@@ -509,7 +509,7 @@ void FAsyncFuturesSpec_Core::Define()
 				TestTrue("Result is completed", Result.HasValue());
 				TestEqual("Captured String", Result.GetValue(), TEXT("Error Message"));
 				Done.Execute();
-			}, UE::Tasks::FOptions(ENamedThreads::GameThread));
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
 	});
 }

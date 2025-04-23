@@ -1,17 +1,20 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #pragma once
 
 // Engine Includes
 #include "Async/Async.h"
+#include "CoreTypes.h"
 #include "Tasks/Task.h"
 #include "Templates/SharedPointer.h"
+#include "Misc/AssertionMacros.h"
+#include "Misc/IQueuedWork.h"
+#include "Misc/QueuedThreadPool.h"
 
 // Module Includes
 #include "Error.h"
 #include "LifetimeMonitor.h"
 #include "Result.h"
 #include "PromiseState.h"
-#include "Error.h"
 
 namespace UE::Tasks
 {
@@ -171,8 +174,8 @@ namespace UE::Tasks
 		void SetValue(TResult<T>&& Result) const { State->SetValue(MoveTemp(Result)); }
 		void SetValue(const T& Result) const { State->SetValue(Result); }
 		void SetValue(T&& Result) const { State->SetValue(Result); }
-		void SetValue(const Error& Result) const { State->SetValue(Result); }
-		void SetValue(Error&& Result) const { State->SetValue(Result); }
+		void SetValue(const FError& Result) const { State->SetValue(Result); }
+		void SetValue(FError&& Result) const { State->SetValue(Result); }
 		void Cancel() const { SetValue(MakeCancelledError()); }
 
 	public:
@@ -201,8 +204,8 @@ namespace UE::Tasks
 		void SetValue(const TResult<void>& Result) const { State->SetValue(Result); }
 		void SetValue(TResult<void>&& Result) const { State->SetValue(MoveTemp(Result)); }
 		void SetValue() const { State->SetValue(TResult<void>()); }
-		void SetValue(const Error& Result) const { State->SetValue(TResult<void>(Result)); }
-		void SetValue(Error&& Result) const { State->SetValue(TResult<void>(Result)); }
+		void SetValue(const FError& Result) const { State->SetValue(TResult<void>(Result)); }
+		void SetValue(FError&& Result) const { State->SetValue(TResult<void>(Result)); }
 		void Cancel() const { SetValue(MakeCancelledError()); }
 
 	public:
@@ -303,43 +306,28 @@ namespace UE::Tasks
 	class FOptions
 	{
 	public:
-		FOptions(TOptional<FCancellationHandle>&& OptionalHandle, TOptional<ENamedThreads::Type>&& OptionalThread)
-			: Thread(MoveTemp(OptionalThread))
-			, CancellationHandle(MoveTemp(OptionalHandle))
-		{
-		}
-
 		FOptions()
-			: FOptions(
-				TOptional<FCancellationHandle>(),
-				TOptional<ENamedThreads::Type>()) 
+			: Thread(TOptional<ENamedThreads::Type>())
+			, CancellationHandle(TOptional<FCancellationHandle>())
+			, Execution(TOptional<EAsyncExecution>())
 		{
 		}
 
-		FOptions(TOptional<FCancellationHandle>&& OptionalHandle)
-			: FOptions(
-				MoveTemp(OptionalHandle),
-				TOptional<ENamedThreads::Type>())
-		{
-		}
-
-		FOptions(TOptional<ENamedThreads::Type>&& OptionalThread)
-			: FOptions(
-				TOptional<FCancellationHandle>(),
-				MoveTemp(OptionalThread))
-		{
-		}
-
+		//FOptions& Set(ENamedThreads::Type&& ThreadIn) { Thread = MoveTemp(ThreadIn); return *this; }
+		FOptions& Set(const ENamedThreads::Type ThreadIn) { Thread = ThreadIn; return *this; }
+		//FOptions& Set(FCancellationHandle&& HandleIn) { CancellationHandle = MoveTemp(HandleIn); return *this; }
+		FOptions& Set(const FCancellationHandle& HandleIn) { CancellationHandle = HandleIn; return *this; }
+		//FOptions& Set(EAsyncExecution&& ExecutionIn) { Execution = MoveTemp(ExecutionIn); return *this; }
+		FOptions& Set(const EAsyncExecution ExecutionIn) { Execution = ExecutionIn; return *this; }
 		
 		TOptional<FCancellationHandle> GetCancellation() const { return CancellationHandle; }
-		ENamedThreads::Type GetDesiredThread() const
-		{
-			return Thread.Get(ENamedThreads::AnyThread);
-		}
+		ENamedThreads::Type GetDesiredThread() const {	return Thread.Get(ENamedThreads::AnyThread); }
+		EAsyncExecution GetExecutionPolicy() const {	return Execution.Get(EAsyncExecution::TaskGraph); }
 
 	private:
 		TOptional<ENamedThreads::Type> Thread;
 		TOptional<FCancellationHandle> CancellationHandle;
+		TOptional<EAsyncExecution> Execution;
 	};
 
 	namespace Private
@@ -546,10 +534,11 @@ namespace UE::Tasks
 
 	namespace Private
 	{
-		template<typename TFunctionType, typename TResultType, typename TPromise, typename TLifetimeMonitor>
+		//Wrapper task for the async call. When this executes we then schedule a free task on whatever thread/execution we've specified
+		template<typename TFunctionType, typename TResultType, typename TPromiseType, typename TLifetimeMonitor>
 		class TContinuationTask : public FAsyncGraphTaskBase
 		{
-			using TPromiseRef = TSharedRef<TAsyncPromise<TPromise>, ESPMode::ThreadSafe>;
+			using TPromiseRef = TSharedRef<TAsyncPromise<TPromiseType>, ESPMode::ThreadSafe>;
 			using TRootFunction = typename std::remove_cv_t<typename TRemoveReference<TFunctionType>::Type>;
 
 		public:
@@ -558,44 +547,156 @@ namespace UE::Tasks
 				const TSharedRef<TPromiseState<TResultType>, ESPMode::ThreadSafe>& InPreviousPromise,
 				TLifetimeMonitor&& InLifetimeMonitor,
 				const FOptions& Options)
-				: Promise(MoveTemp(InPromise))
+				: MyPromise(MoveTemp(InPromise))
 				, PreviousPromise(InPreviousPromise)
 				, ContinuationFunction(Forward<TFunctionType>(InFunction))
 				, LifetimeMonitor(MoveTemp(InLifetimeMonitor))
 				, DesiredThread(Options.GetDesiredThread())
+				, Execution(Options.GetExecutionPolicy())
 			{
 				const TOptional<FCancellationHandle>& Cancellation = Options.GetCancellation();
 				if (Cancellation.IsSet())
 				{
 					FCancellationHandle Handle = Cancellation.GetValue();
-					Handle.Bind(*Promise);
+					Handle.Bind(*MyPromise);
 				}
 			}
 
 			void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 			{
-				if (!Promise->IsSet())
-				{
-					if (auto PinnedObject = LifetimeMonitor.Pin())
+				check(PreviousPromise->IsSet());
+				auto Function = [
+					InPromise = MoveTemp(MyPromise),
+					InPreviousPromise = MoveTemp(PreviousPromise), 
+					InContinuationFunction = MoveTemp(ContinuationFunction),
+					InLifetimeMonitor = MoveTemp(LifetimeMonitor),
+					InThread = MoveTemp(DesiredThread)
+				]() mutable -> int32
 					{
-						check(PreviousPromise->IsSet());
-						ExecuteContinuation(*Promise, PreviousPromise->Get(), MoveTemp(ContinuationFunction));
+						if (!InPromise->IsSet())
+						{
+							if (auto PinnedObject = InLifetimeMonitor.Pin())
+							{
+								check(InPreviousPromise->IsSet());
+								ExecuteContinuation(*InPromise, InPreviousPromise->Get(), MoveTemp(InContinuationFunction));
+							}
+							else
+							{
+								InPromise->SetValue(FError(ERROR_CONTEXT_FUTURE, ERROR_LIFETIME, TEXT("Owner lifetime expired")));
+							}
+						}
+
+						return 0;
+					};
+				TPromise<int32> Promise = TPromise<int32>();
+				//Copied from Async.h to allow us to pass the thread to the task graph
+				switch (Execution)
+				{
+				case EAsyncExecution::TaskGraphMainThread:
+				{
+					TGraphTask<TAsyncGraphTask<int32>>::CreateTask().
+						ConstructAndDispatchWhenReady(
+							MoveTemp(Function), 
+							MoveTemp(Promise),
+							ENamedThreads::GameThread);
+				}
+				break;
+				case EAsyncExecution::TaskGraph:
+				{
+					TGraphTask<TAsyncGraphTask<int32>>::CreateTask().
+						ConstructAndDispatchWhenReady(
+							MoveTemp(Function), 
+							MoveTemp(Promise),
+							DesiredThread);
+				}
+				break;
+
+				case EAsyncExecution::Thread:
+					if (FPlatformProcess::SupportsMultithreading())
+					{
+						TPromise<FRunnableThread*> ThreadPromise = TPromise<FRunnableThread*>();
+						TAsyncRunnable<int32>* Runnable = new TAsyncRunnable<int32>(
+							MoveTemp(Function), 
+							MoveTemp(Promise),
+							ThreadPromise.GetFuture());
+
+						const FString TAsyncThreadName = FString::Printf(TEXT("TAsync %d"), FAsyncThreadIndex::GetNext());
+						FRunnableThread* RunnableThread = FRunnableThread::Create(Runnable, *TAsyncThreadName);
+
+						check(RunnableThread != nullptr);
+						check(RunnableThread->GetThreadType() == FRunnableThread::ThreadType::Real);
+
+						ThreadPromise.SetValue(RunnableThread);
 					}
 					else
 					{
-						Promise->SetValue(Error(ERROR_CONTEXT_FUTURE, ERROR_LIFETIME, TEXT("Owner lifetime expired")));
+						Function();
 					}
+					break;
+
+				case EAsyncExecution::ThreadIfForkSafe:
+					if (FPlatformProcess::SupportsMultithreading() || FForkProcessHelper::IsForkedMultithreadInstance())
+					{
+						TPromise<FRunnableThread*> ThreadPromise;
+						TAsyncRunnable<int32>* Runnable = new TAsyncRunnable<int32>(
+							MoveTemp(Function), 
+							MoveTemp(Promise),
+							ThreadPromise.GetFuture());
+
+						const FString TAsyncThreadName = FString::Printf(TEXT("TAsync %d"), FAsyncThreadIndex::GetNext());
+						FRunnableThread* RunnableThread = FForkProcessHelper::CreateForkableThread(Runnable, *TAsyncThreadName);
+
+						check(RunnableThread != nullptr);
+						check(RunnableThread->GetThreadType() == FRunnableThread::ThreadType::Real);
+
+						ThreadPromise.SetValue(RunnableThread);
+					}
+					else
+					{
+						Function();
+					}
+					break;
+
+				case EAsyncExecution::ThreadPool:
+					if (FPlatformProcess::SupportsMultithreading())
+					{
+						check(GThreadPool != nullptr);
+						GThreadPool->AddQueuedWork(new TAsyncQueuedWork<int32>(MoveTemp(Function), MoveTemp(Promise)));
+					}
+					else
+					{
+						Function();
+					}
+					break;
+
+#if WITH_EDITOR
+				case EAsyncExecution::LargeThreadPool:
+					if (FPlatformProcess::SupportsMultithreading())
+					{
+						check(GLargeThreadPool != nullptr);
+						GLargeThreadPool->AddQueuedWork(new TAsyncQueuedWork<int32>(MoveTemp(Function), MoveTemp(Promise)));
+					}
+					else
+					{
+						Function();
+					}
+					break;
+#endif
+
+				default:
+					check(false); // not implemented!
 				}
 			}
 
 			ENamedThreads::Type GetDesiredThread()
 			{
-				return DesiredThread;
+				//This just schedules the unlock
+				return ENamedThreads::AnyThread;
 			}
 
 		private:
 
-			TPromiseRef Promise;
+			TPromiseRef MyPromise;
 			TSharedRef<TPromiseState<TResultType>, ESPMode::ThreadSafe> PreviousPromise;
 
 			TRootFunction ContinuationFunction;
@@ -603,6 +704,7 @@ namespace UE::Tasks
 			TLifetimeMonitor LifetimeMonitor;
 
 			ENamedThreads::Type DesiredThread;
+			EAsyncExecution Execution;
 		};
 	}
 
@@ -624,6 +726,7 @@ namespace UE::Tasks
 			TSharedRef<TAsyncPromise<TFutureType>> Promise = MakeShared<TAsyncPromise<TFutureType>>();
 			TAsyncFuture<TFutureType> Future = Promise->GetFuture();
 
+			//Make Scheduling task on the graphtask
 			FGraphEventArray Triggers{ PreviousPromise->GetCompletionEvent() };
 			TGraphTask<TContinuationTask<Func, ResultType, TFutureType, Monitor>>::CreateTask(&Triggers).ConstructAndDispatchWhenReady(
 				Forward<Func>(Function), 

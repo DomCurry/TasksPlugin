@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #pragma once
 
 // Engine Includes
@@ -6,26 +6,26 @@
 
 namespace UE::Tasks
 {
-	struct Error
+	struct FError
 	{
 	public:
-		Error(uint64 ErrorContext, uint64 ErrorCode, const FString& ErrorMessage)
+		FError(uint64 ErrorContext, uint64 ErrorCode, const FString& ErrorMessage)
 			: Context(ErrorContext)
 			, Code(ErrorCode)
 			, Message(ErrorMessage)
 		{}
 		
-		Error(uint64 ErrorContext, uint64 ErrorCode, FString&& ErrorMessage)
+		FError(uint64 ErrorContext, uint64 ErrorCode, FString&& ErrorMessage)
 			: Context(ErrorContext)
 			, Code(ErrorCode)
 			, Message(MoveTemp(ErrorMessage))
 		{}
 
-		Error(uint64 ErrorContext, uint64 ErrorCode)
-			: Error(ErrorContext, ErrorCode, FString())
+		FError(uint64 ErrorContext, uint64 ErrorCode)
+			: FError(ErrorContext, ErrorCode, FString())
 		{}
 
-		inline bool operator==(const Error& Other) const { return Context == Other.Context && Code == Other.Code; }
+		inline bool operator==(const FError& Other) const { return Context == Other.Context && Code == Other.Code; }
 
 		uint64 GetContext() const { return Context;}
 		uint64 GetCode() const { return Code;}
@@ -40,8 +40,8 @@ namespace UE::Tasks
 	uint64 ERROR_CONTEXT_FUTURE = 1;
 	uint64 ERROR_CANCELLED = 1;
 
-	Error MakeCancelledError()
+	FError MakeCancelledError()
 	{
-		return Error(ERROR_CONTEXT_FUTURE, ERROR_CANCELLED, TEXT("Cancelled Result"));
+		return FError(ERROR_CONTEXT_FUTURE, ERROR_CANCELLED, TEXT("Cancelled Result"));
 	}
 }

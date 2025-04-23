@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #pragma once
 
 // Engine Includes
@@ -18,12 +18,12 @@ namespace UE::Tasks
 
 		TResult(const ResultType& Value)	: ValueOrError(TValueOrError_ValueProxy(Forward<const ResultType>(Value))) {}
 		TResult(ResultType&& Value)			: ValueOrError(TValueOrError_ValueProxy(MoveTemp(Value))) {}
-		TResult(const Error& Result)		: ValueOrError(TValueOrError_ErrorProxy(Forward<const Error>(Result))) {}
-		TResult(Error&& Result)				: ValueOrError(TValueOrError_ErrorProxy(MoveTemp(Result))) {}
+		TResult(const FError& Result)		: ValueOrError(TValueOrError_ErrorProxy(Forward<const FError>(Result))) {}
+		TResult(FError&& Result)				: ValueOrError(TValueOrError_ErrorProxy(MoveTemp(Result))) {}
 
 		bool HasError() const			{ return ValueOrError.HasError(); }
 		bool HasValue() const			{ return ValueOrError.HasValue(); }
-		const Error& GetError() const	{ return ValueOrError.GetError(); }
+		const FError& GetError() const	{ return ValueOrError.GetError(); }
 		const ResultType& GetValue() const	{ return ValueOrError.GetValue(); }
 
 		bool IsCancelled() const { return HasError() && GetError() == MakeCancelledError(); }
@@ -62,7 +62,7 @@ namespace UE::Tasks
 		}
 
 	private:
-		TValueOrError<ResultType, const Error> ValueOrError;
+		TValueOrError<ResultType, const FError> ValueOrError;
 	};
 
 	template<>
@@ -72,12 +72,12 @@ namespace UE::Tasks
 		using ResultType = void;
 
 		TResult() : ValueOrError(TValueOrError_ValueProxy()) {}
-		TResult(const Error& Result) : ValueOrError(TValueOrError_ErrorProxy(Forward<const Error>(Result))) {}
-		TResult(Error&& Result) : ValueOrError(TValueOrError_ErrorProxy(MoveTemp(Result))) {}
+		TResult(const FError& Result) : ValueOrError(TValueOrError_ErrorProxy(Forward<const FError>(Result))) {}
+		TResult(FError&& Result) : ValueOrError(TValueOrError_ErrorProxy(MoveTemp(Result))) {}
 
 		bool HasError() const { return ValueOrError.HasError(); }
 		bool HasValue() const { return ValueOrError.HasValue(); }
-		const Error& GetError() const { return ValueOrError.GetError(); }
+		const FError& GetError() const { return ValueOrError.GetError(); }
 		//void GetValue() const { }
 
 		bool IsCancelled() const { return HasError() && GetError() == MakeCancelledError(); }
@@ -116,7 +116,7 @@ namespace UE::Tasks
 		}
 
 	private:
-		TValueOrError<ResultType, const Error> ValueOrError;
+		TValueOrError<ResultType, const FError> ValueOrError;
 	};
 
 	template<typename T>

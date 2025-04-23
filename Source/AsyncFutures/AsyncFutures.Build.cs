@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 using UnrealBuildTool;
 using System.IO;
 
@@ -9,7 +9,6 @@ public class AsyncFutures : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
 		PublicIncludePathModuleNames.AddRange(new string[] {
-			"Core"
 		});
 
 		PublicDependencyModuleNames.AddRange(new string[] {

@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #include <CoreMinimal.h>
 #include <AsyncFutures.h>
 
@@ -50,71 +50,71 @@ void FAsyncFuturesSpec_TaskHelpers::Define()
 				});
 		});
 
-	LatentIt("Can Make Error Future from value", [this](const auto& Done)
+	LatentIt("Can Make FError Future from value", [this](const auto& Done)
 		{
-			UE::Tasks::MakeErrorFuture<int32>(UE::Tasks::Error(1, 2, TEXT("rvalue error"))).Then([this, Done](const UE::Tasks::TResult<int32>& Result)
+			UE::Tasks::MakeErrorFuture<int32>(UE::Tasks::FError(1, 2, TEXT("rvalue error"))).Then([this, Done](const UE::Tasks::TResult<int32>& Result)
 				{
 					TestTrue("Future is error", !Result.HasValue());
 					TestTrue("Future has error", Result.HasError());
-					TestEqual ("Future error is correct", Result.GetError(), UE::Tasks::Error(1, 2, TEXT("rvalue error")));
+					TestEqual ("Future error is correct", Result.GetError(), UE::Tasks::FError(1, 2, TEXT("rvalue error")));
 					Done.Execute();
 				});
 		});
 
-	LatentIt("Can Make Error Future from void value", [this](const auto& Done)
+	LatentIt("Can Make FError Future from void value", [this](const auto& Done)
 		{
-			UE::Tasks::Error Error = UE::Tasks::Error(1, 2, TEXT("lvalue error"));
-			UE::Tasks::MakeErrorFuture<int32>(Error).Then([this, Done, Error](const UE::Tasks::TResult<int32>& Result)
+			UE::Tasks::FError FError = UE::Tasks::FError(1, 2, TEXT("lvalue error"));
+			UE::Tasks::MakeErrorFuture<int32>(FError).Then([this, Done, FError](const UE::Tasks::TResult<int32>& Result)
 				{
 					TestTrue("Future is error", !Result.HasValue());
 					TestTrue("Future has error", Result.HasError());
-					TestEqual("Future error is correct", Result.GetError(), Error);
+					TestEqual("Future error is correct", Result.GetError(), FError);
 					Done.Execute();
 				});
 		});
 
-	LatentIt("Can Make Error Future from result", [this](const auto& Done)
+	LatentIt("Can Make FError Future from result", [this](const auto& Done)
 		{
-			UE::Tasks::Error Error = UE::Tasks::Error(1, 2, TEXT("lvalue error"));
-			UE::Tasks::MakeReadyFuture<int32>(UE::Tasks::TResult<int32>(Error)).Then([this, Done, Error](const UE::Tasks::TResult<int32>& Result)
+			UE::Tasks::FError FError = UE::Tasks::FError(1, 2, TEXT("lvalue error"));
+			UE::Tasks::MakeReadyFuture<int32>(UE::Tasks::TResult<int32>(FError)).Then([this, Done, FError](const UE::Tasks::TResult<int32>& Result)
 				{
 					TestTrue("Future is error", !Result.HasValue());
 					TestTrue("Future has error", Result.HasError());
-					TestEqual("Future error is correct", Result.GetError(), Error);
+					TestEqual("Future error is correct", Result.GetError(), FError);
 					Done.Execute();
 				});
 		});
 
-	LatentIt("Can Make Error Future from void result", [this](const auto& Done)
+	LatentIt("Can Make FError Future from void result", [this](const auto& Done)
 		{
-			UE::Tasks::MakeReadyFuture<void>(UE::Tasks::TResult<void>(UE::Tasks::Error(1, 2, TEXT("rvalue error")))).Then([this, Done](const UE::Tasks::TResult<void>& Result)
+			UE::Tasks::MakeReadyFuture<void>(UE::Tasks::TResult<void>(UE::Tasks::FError(1, 2, TEXT("rvalue error")))).Then([this, Done](const UE::Tasks::TResult<void>& Result)
 				{
 					TestTrue("Future is completed", !Result.HasValue());
 					TestTrue("Future has error", Result.HasError());
-					TestEqual("Future error is correct", Result.GetError(), UE::Tasks::Error(1, 2, TEXT("rvalue error")));
+					TestEqual("Future error is correct", Result.GetError(), UE::Tasks::FError(1, 2, TEXT("rvalue error")));
 					Done.Execute();
 				});
 		});
 	
-	LatentIt("Can Make Error Future from converted result", [this](const auto& Done)
+	LatentIt("Can Make FError Future from converted result", [this](const auto& Done)
 		{
-			UE::Tasks::Error Error = UE::Tasks::Error(1, 2, TEXT("lvalue error"));
-			UE::Tasks::MakeErrorFuture<int32>(UE::Tasks::TResult<void>(Error)).Then([this, Done, Error](const UE::Tasks::TResult<int32>& Result)
+			UE::Tasks::FError FError = UE::Tasks::FError(1, 2, TEXT("lvalue error"));
+			UE::Tasks::MakeErrorFuture<int32>(UE::Tasks::TResult<void>(FError)).Then([this, Done, FError](const UE::Tasks::TResult<int32>& Result)
 				{
 					TestTrue("Future is error", !Result.HasValue());
 					TestTrue("Future has error", Result.HasError());
-					TestEqual("Future error is correct", Result.GetError(), Error);
+					TestEqual("Future error is correct", Result.GetError(), FError);
 					Done.Execute();
 				});
 		});
 	
-	LatentIt("Can Make Error Future from void converted result", [this](const auto& Done)
+	LatentIt("Can Make FError Future from void converted result", [this](const auto& Done)
 		{
-			UE::Tasks::MakeErrorFuture<void>(UE::Tasks::TResult<int32>(UE::Tasks::Error(1, 2, TEXT("rvalue error")))).Then([this, Done](const UE::Tasks::TResult<void>& Result)
+			UE::Tasks::MakeErrorFuture<void>(UE::Tasks::TResult<int32>(UE::Tasks::FError(1, 2, TEXT("rvalue error")))).Then([this, Done](const UE::Tasks::TResult<void>& Result)
 				{
 					TestTrue("Future is completed", !Result.HasValue());
 					TestTrue("Future has error", Result.HasError());
-					TestEqual("Future error is correct", Result.GetError(), UE::Tasks::Error(1, 2, TEXT("rvalue error")));
+					TestEqual("Future error is correct", Result.GetError(), UE::Tasks::FError(1, 2, TEXT("rvalue error")));
 					Done.Execute();
 				});
 		});

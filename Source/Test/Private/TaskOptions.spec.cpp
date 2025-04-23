@@ -1,4 +1,4 @@
-// Copyright(c) Dominic Curry. All rights reserved.
+// Copyright Dominic Curry. All Rights Reserved.
 #include <CoreMinimal.h>
 #include <AsyncFutures.h>
 
@@ -16,7 +16,7 @@ void FAsyncFuturesSpec_TaskOptions::Define()
 		UE::Tasks::Async([]()
 		{
 			return FTaskGraphInterface::Get().GetCurrentThreadIfKnown();
-		}, UE::Tasks::FOptions(CurrentThread))
+		}, UE::Tasks::FOptions().Set(CurrentThread))
 		.Then([this, Done, CurrentThread](const UE::Tasks::TResult<ENamedThreads::Type>& Result)
 		{
 			TestTrue("Async function is completed", Result.HasValue());
@@ -30,7 +30,7 @@ void FAsyncFuturesSpec_TaskOptions::Define()
 		UE::Tasks::Async([]()
 		{
 			return UE::Tasks::TResult(FTaskGraphInterface::Get().GetCurrentThreadIfKnown());
-		}, UE::Tasks::FOptions(ENamedThreads::ActualRenderingThread))
+		}, UE::Tasks::FOptions().Set(ENamedThreads::ActualRenderingThread))
 		.Then([this, Done](UE::Tasks::TResult<ENamedThreads::Type> Result)
 		{
 			ENamedThreads::Type CurrentThread = FTaskGraphInterface::Get().GetCurrentThreadIfKnown();
@@ -38,7 +38,7 @@ void FAsyncFuturesSpec_TaskOptions::Define()
 			TestEqual("Prevous thread", Result.GetValue(), ENamedThreads::ActualRenderingThread);
 			TestEqual("Execution thread", CurrentThread, ENamedThreads::GameThread);
 			Done.Execute();
-		},UE::Tasks::FOptions(ENamedThreads::GameThread));
+		},UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Can run in game thread", [this](const auto& Done)
@@ -47,7 +47,7 @@ void FAsyncFuturesSpec_TaskOptions::Define()
 		{
 			TestEqual("Execution thread", FTaskGraphInterface::Get().GetCurrentThreadIfKnown(), ENamedThreads::GameThread);
 			Done.Execute();
-		},UE::Tasks::FOptions(ENamedThreads::GameThread));
+		},UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
 	LatentIt("Can use previous thread in Then", [this](const auto& Done)
@@ -55,7 +55,7 @@ void FAsyncFuturesSpec_TaskOptions::Define()
 		UE::Tasks::Async([]()
 		{
 			return UE::Tasks::TResult(FTaskGraphInterface::Get().GetCurrentThreadIfKnown());
-		}, UE::Tasks::FOptions(ENamedThreads::GameThread))
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread))
 		.Then([this, Done](UE::Tasks::TResult<ENamedThreads::Type> Result)
 		{
 			TestTrue("Async function is completed", Result.HasValue());
@@ -73,12 +73,12 @@ void FAsyncFuturesSpec_TaskOptions::Define()
 		.Then([](UE::Tasks::TResult<void> Result)
 		{
 			return UE::Tasks::TResult(FTaskGraphInterface::Get().GetCurrentThreadIfKnown());
-		}, UE::Tasks::FOptions(ENamedThreads::AnyBackgroundThreadNormalTask))
+		}, UE::Tasks::FOptions().Set(ENamedThreads::AnyBackgroundThreadNormalTask))
 		.Then([this, Done](UE::Tasks::TResult<ENamedThreads::Type> Result)
 		{
 			TestTrue("Async function is completed", Result.HasValue());
 			TestEqual("Executed on the thread pool", (Result.GetValue() & ENamedThreads::ThreadIndexMask), ENamedThreads::AnyThread);
 			Done.Execute();
-		},UE::Tasks::FOptions(ENamedThreads::GameThread));
+		},UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 }
