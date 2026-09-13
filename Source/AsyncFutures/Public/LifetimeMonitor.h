@@ -12,8 +12,27 @@ namespace UE
 {
 	namespace Private
 	{
+		// Detects whether T has a callable AsShared() member without hard-erroring for types
+		// that don't (e.g. plain UObject). TSharedPtrTypes below dispatches on this before ever
+		// naming ->AsShared() in a template body, because a class template's own instantiation
+		// is not "immediate context" for SFINAE - the compiler will not silently discard a
+		// failure inside TSharedPtrTypes<T>'s member typedefs the way it discards one in the
+		// signature of the alias/function that names TSharedPtrTypes<T>::PtrType. Route any
+		// change here through the same two-step (detect, then dispatch) shape or the
+		// TSharedFromThis partial specializations below will hard-error for UObject types again.
+		template <typename T, typename = void>
+		struct THasAsShared : std::false_type {};
+
 		template <typename T>
+		struct THasAsShared<T, decltype(void(std::declval<std::remove_pointer_t<T>&>().AsShared()))> : std::true_type {};
+
+		template <typename T, bool = THasAsShared<T>::value>
 		struct TSharedPtrTypes
+		{
+		};
+
+		template <typename T>
+		struct TSharedPtrTypes<T, true>
 		{
 			using Type = std::decay_t<decltype(((std::remove_pointer_t<T>*)nullptr)->AsShared())>;
 			using PtrType = typename Type::ElementType;
