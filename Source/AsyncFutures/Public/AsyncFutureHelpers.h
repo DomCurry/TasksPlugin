@@ -9,7 +9,7 @@
 
 namespace UE::Tasks
 {
-	inline uint64 ERROR_INVALID_ARGUMENT = 3;
+	inline constexpr uint64 ERROR_INVALID_ARGUMENT = 3;
 
 	enum class EFailMode
 	{
