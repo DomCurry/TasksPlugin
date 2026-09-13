@@ -18,7 +18,6 @@
 
 namespace UE::Tasks
 {
-	inline constexpr uint64 ERROR_LIFETIME = 2;
 	class FOptions;
 
 	namespace Private
@@ -38,7 +37,7 @@ namespace UE::Tasks
 		using ExpectedResultType = TResult<UnwrappedResultType>;
 
 	public:
-		using TResult = ResultType;
+		using ValueType = ResultType;
 
 		//Construction and copying
 		TAsyncFuture() {}
@@ -57,7 +56,7 @@ namespace UE::Tasks
 		TAsyncFuture(TSharedRef<Private::TPromiseState<ResultType>, ESPMode::ThreadSafe>&& Other) : Promise(MoveTemp(Other)) {}
 		TAsyncFuture<ResultType>& operator= (TSharedRef<Private::TPromiseState<ResultType>, ESPMode::ThreadSafe>&& Other)
 		{
-			Promise = MoveTemp(Promise);
+			Promise = MoveTemp(Other);
 			return *this;
 		}
 		TAsyncFuture(const TSharedRef<Private::TPromiseState<ResultType>, ESPMode::ThreadSafe>& Other) : Promise(Other) {}
@@ -76,14 +75,14 @@ namespace UE::Tasks
 		template<typename Func>
 		auto Then(Func&& Function, const FOptions& Options = FOptions()) const
 		{
-			check(IsValid())
+			check(IsValid());
 			return Private::Then<Func, ResultType>(Forward<Func>(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<void>());
 		}
 
 		template<typename Func, typename TOwner>
 		auto Then(TOwner* Owner, Func&& Function, const FOptions& Options = FOptions()) const
 		{
-			check(IsValid())
+			check(IsValid());
 			return Private::Then<Func, ResultType>(Forward<Func>(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<TOwner>(Owner));
 		}
 
@@ -99,7 +98,7 @@ namespace UE::Tasks
 		using ExpectedResultType = TResult<void>;
 
 	public:
-		using TResult = void;
+		using ValueType = void;
 
 		//Construction and copying
 		TAsyncFuture() {}
@@ -118,7 +117,7 @@ namespace UE::Tasks
 		TAsyncFuture(TSharedRef<Private::TPromiseState<void>, ESPMode::ThreadSafe>&& Other) : Promise(MoveTemp(Other)) {}
 		TAsyncFuture<void>& operator= (TSharedRef<Private::TPromiseState<void>, ESPMode::ThreadSafe>&& Other)
 		{
-			Promise = MoveTemp(Promise);
+			Promise = MoveTemp(Other);
 			return *this;
 		}
 		TAsyncFuture(const TSharedRef<Private::TPromiseState<void>, ESPMode::ThreadSafe>& Other) : Promise(Other) {}
@@ -138,14 +137,14 @@ namespace UE::Tasks
 		auto Then(Func&& Function, const FOptions& Options = FOptions()) const
 		{
 			check(IsValid());
-			return Private::Then(MoveTemp(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<void>());
+			return Private::Then<Func, void>(Forward<Func>(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<void>());
 		}
 
 		template<typename Func, typename TOwner>
 		auto Then(TOwner* Owner, Func&& Function, const FOptions& Options = FOptions()) const
 		{
 			check(IsValid());
-			return Private::Then(MoveTemp(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<TOwner>(Owner));
+			return Private::Then<Func, void>(Forward<Func>(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<TOwner>(Owner));
 		}
 
 	private:
@@ -236,6 +235,10 @@ namespace UE::Tasks
 		{
 		public:
 			FCancellationState() : Cancelled(false) {}
+			// Destroying the last FCancellationHandle/FWeakCancellationHandle referencing this
+			// state cancels everything ever bound to it. This is how an object owns its tasks:
+			// hold the handle as a member (not a local!) and every task started with it is
+			// cancelled when the object is collected.
 			~FCancellationState() { Cancel(); }
 			void Cancel()
 			{
@@ -280,27 +283,6 @@ namespace UE::Tasks
 		void Cancel() { State->Cancel(); }
 	private:
 		TSharedRef<Private::FCancellationState, ESPMode::ThreadSafe> State;
-		friend class FWeakCancellationHandle;
-	};
-
-	class FWeakCancellationHandle
-	{
-	public:
-		FWeakCancellationHandle() : State(MakeShared<Private::FCancellationState>()) {}
-
-		FWeakCancellationHandle(const FCancellationHandle& Other) : State(Other.State) {}
-		FWeakCancellationHandle(FCancellationHandle&& Other) : State(MoveTemp(Other.State)) {}
-		FWeakCancellationHandle& operator= (const FCancellationHandle& Other) { State = Other.State; return *this; }
-		FWeakCancellationHandle& operator= (FCancellationHandle&& Other) { State = MoveTemp(Other.State); return *this; }
-
-
-		FWeakCancellationHandle(const FWeakCancellationHandle& Other) : State(Other.State) {}
-		FWeakCancellationHandle(FWeakCancellationHandle&& Other) : State(MoveTemp(Other.State)) {}
-		FWeakCancellationHandle& operator= (const FWeakCancellationHandle& Other) { State = Other.State; return *this; }
-		FWeakCancellationHandle& operator= (FWeakCancellationHandle&& Other) { State = MoveTemp(Other.State); return *this; }
-
-	private:
-		TWeakPtr<Private::FCancellationState, ESPMode::ThreadSafe> State;
 	};
 
 	class FOptions
@@ -566,8 +548,7 @@ namespace UE::Tasks
 					InPromise = MoveTemp(MyPromise),
 					InPreviousPromise = MoveTemp(PreviousPromise), 
 					InContinuationFunction = MoveTemp(ContinuationFunction),
-					InLifetimeMonitor = MoveTemp(LifetimeMonitor),
-					InThread = MoveTemp(DesiredThread)
+					InLifetimeMonitor = MoveTemp(LifetimeMonitor)
 				]() mutable -> int32
 					{
 						if (!InPromise->IsSet())

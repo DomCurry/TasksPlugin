@@ -426,6 +426,34 @@ void FAsyncFuturesSpec_Core::Define()
 				Done.Execute();
 			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 		});
+
+		LatentIt("Does not consume a named lambda's captures", [this](const auto& Done)
+		{
+			TArray<int32> Captured = { 1, 2, 3 };
+			auto Continuation = [Captured]() { return Captured.Num(); };
+
+			UE::Tasks::MakeReadyFuture().Then(Continuation)
+			.Then([this, Done, Continuation](int32 Count)
+			{
+				TestEqual("First invocation saw the captures", Count, 3);
+				TestEqual("Caller's lambda still holds its captures", Continuation(), 3);
+				Done.Execute();
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+		});
+
+		LatentIt("Does not consume a const named lambda's captures", [this](const auto& Done)
+		{
+			TArray<int32> Captured = { 1, 2, 3 };
+			const auto Continuation = [Captured]() { return Captured.Num(); };
+
+			UE::Tasks::MakeReadyFuture().Then(Continuation)
+			.Then([this, Done, Continuation](int32 Count)
+			{
+				TestEqual("First invocation saw the captures", Count, 3);
+				TestEqual("Caller's lambda still holds its captures", Continuation(), 3);
+				Done.Execute();
+			}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+		});
 	});
 
 	Describe("Errors", [this]()
