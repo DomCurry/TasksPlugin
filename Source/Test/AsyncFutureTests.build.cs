@@ -7,11 +7,6 @@ public class AsyncFutureTests : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// Keep unity disabled: this module is the standing guard against ODR
-		// violations in AsyncFutures' public headers (multiple includers in
-		// separate translation units is exactly what a unity build hides).
-		bUseUnity = false;
-
         PublicDependencyModuleNames.AddRange(new string[] {
             "Core",
         });
