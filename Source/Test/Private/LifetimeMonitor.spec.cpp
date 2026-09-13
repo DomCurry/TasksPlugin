@@ -96,8 +96,8 @@ void FAsyncFuturesSpec_LifetimeMonitor::Define()
 
 			//Simulate destruction: mark the object garbage so the weak pointer reports invalid,
 			//exactly as would happen once the real owner is destroyed.
-			Owner->MarkAsGarbage();
 			Owner->RemoveFromRoot();
+			Owner->MarkAsGarbage();
 
 			Gate.SetValue();
 			Future.Then([this, Done](const UE::Tasks::TResult<int32>& Result)
@@ -125,7 +125,8 @@ void FAsyncFuturesSpec_LifetimeMonitor::Define()
 			});
 
 			Gate.SetValue();
-			Future.Then([this, Done](const UE::Tasks::TResult<int32>& Result)
+			// Owner must be captured or it's destroyed before the continuation runs.
+			Future.Then([this, Done, Owner](const UE::Tasks::TResult<int32>& Result)
 			{
 				TestTrue("Continuation body ran", ContinuationCalled);
 				TestTrue("Result has value", Result.HasValue());
@@ -173,7 +174,8 @@ void FAsyncFuturesSpec_LifetimeMonitor::Define()
 			});
 
 			Gate.SetValue();
-			Future.Then([this, Done](const UE::Tasks::TResult<int32>& Result)
+			// Owner must be captured or it's destroyed before the continuation runs.
+			Future.Then([this, Done, Owner](const UE::Tasks::TResult<int32>& Result)
 			{
 				TestTrue("Continuation body ran", ContinuationCalled);
 				TestTrue("Result has value", Result.HasValue());

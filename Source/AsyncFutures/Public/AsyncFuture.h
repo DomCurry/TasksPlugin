@@ -332,7 +332,9 @@ namespace UE::Tasks
 		TOptional<FCancellationHandle> GetCancellation() const { return CancellationHandle; }
 		ENamedThreads::Type GetDesiredThread() const {	return Thread.Get(ENamedThreads::AnyThread); }
 		EAsyncExecution GetExecutionPolicy() const {	return Execution.Get(EAsyncExecution::TaskGraph); }
-		bool HasExplicitThread() const { return Thread.IsSet(); }
+		bool HasExplicitThread() const {
+			return Thread.IsSet() && ENamedThreads::GetThreadIndex(Thread.GetValue()) != ENamedThreads::AnyThread;
+		}
 
 	private:
 		TOptional<ENamedThreads::Type> Thread;
