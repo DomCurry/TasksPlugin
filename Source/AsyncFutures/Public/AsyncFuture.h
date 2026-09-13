@@ -18,7 +18,6 @@
 
 namespace UE::Tasks
 {
-	inline constexpr uint64 ERROR_LIFETIME = 2;
 	class FOptions;
 
 	namespace Private
@@ -236,6 +235,10 @@ namespace UE::Tasks
 		{
 		public:
 			FCancellationState() : Cancelled(false) {}
+			// Destroying the last FCancellationHandle/FWeakCancellationHandle referencing this
+			// state cancels everything ever bound to it. This is how an object owns its tasks:
+			// hold the handle as a member (not a local!) and every task started with it is
+			// cancelled when the object is collected.
 			~FCancellationState() { Cancel(); }
 			void Cancel()
 			{

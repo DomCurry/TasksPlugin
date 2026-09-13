@@ -39,6 +39,10 @@ namespace UE::Tasks
 
 	inline constexpr uint64 ERROR_CONTEXT_FUTURE = 1;
 	inline constexpr uint64 ERROR_CANCELLED = 1;
+	// A monitored owner (UObject/TSharedFromThis) was destroyed before its continuation ran.
+	// Deliberately distinct from ERROR_CANCELLED: nobody asked to abandon the work, one link
+	// in the chain just disappeared. See TResult::IsOwnerExpired().
+	inline constexpr uint64 ERROR_LIFETIME = 2;
 
 	inline FError MakeCancelledError()
 	{
