@@ -21,7 +21,7 @@ public:
 	 */
 	static inline IAsyncFuturesTest& Get()
 	{
-		return FModuleManager::LoadModuleChecked<IAsyncFuturesTest>("TestModule");
+		return FModuleManager::LoadModuleChecked<IAsyncFuturesTest>("AsyncFutureTests");
 	}
 
 	/**
@@ -31,6 +31,6 @@ public:
 	 */
 	static inline bool IsAvailable()
 	{
-		return FModuleManager::Get().IsModuleLoaded("TestModule");
+		return FModuleManager::Get().IsModuleLoaded("AsyncFutureTests");
 	}
 };
