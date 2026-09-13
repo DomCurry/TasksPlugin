@@ -43,6 +43,9 @@ namespace UE::Tasks
 	// Deliberately distinct from ERROR_CANCELLED: nobody asked to abandon the work, one link
 	// in the chain just disappeared. See TResult::IsOwnerExpired().
 	inline constexpr uint64 ERROR_LIFETIME = 2;
+	// An FOptions execution policy DoTask's switch doesn't recognise for this build
+	// configuration (e.g. LargeThreadPool outside WITH_EDITOR). See TContinuationTask.
+	inline constexpr uint64 ERROR_UNSUPPORTED_EXECUTION = 4;
 
 	inline FError MakeCancelledError()
 	{
