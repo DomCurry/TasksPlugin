@@ -18,12 +18,6 @@ namespace UE::Tasks
 	{
 		struct ForbiddenFunc {};
 
-		template <typename F>
-		auto ReturnTypeHelper(F Func, int, ...) -> decltype(Func());
-
-		template <typename F>
-		auto ReturnTypeHelper(F Func, ...) -> ForbiddenFunc;
-
 		//Aliases for supported specializations for functor return values (both initialization and continuation)
 		template<typename ReturnType>
 		struct TUnitTypeTraits
@@ -32,24 +26,6 @@ namespace UE::Tasks
 			using IsRealValue		= TIntegralConstant<bool, !std::is_void<ReturnType>::value && !TIsResult<ReturnType>::Value && !TIsFuture<ReturnType>::Value>;
 			using IsFuture			= TIsFuture<ReturnType>;
 			using IsResult			= TIsResult<ReturnType>;
-		};
-
-		//Aliases for supported specializations of initialization functors
-		template<typename R>
-		class TInitFunctionTraits
-		{
-		public:
-			using ReturnsNonVoid = TEnableIf<TUnitTypeTraits<R>::IsRealValue || TUnitTypeTraits<R>::IsResult>;
-			using ReturnsVoid = TEnableIf<TUnitTypeTraits<R>::IsVoid>;
-		};
-
-		template <typename F>
-		struct TInitFunctionTypes
-		{
-			using ReturnType = decltype(ReturnTypeHelper(DeclVal<F>(), 0));
-			static_assert(!std::is_same<ReturnType, ForbiddenFunc>::value, "Initial function cannot accept parameters.");
-		
-			using Traits = TInitFunctionTraits<ReturnType>;
 		};
 
 		template<typename P>

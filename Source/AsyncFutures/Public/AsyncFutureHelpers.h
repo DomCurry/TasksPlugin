@@ -133,11 +133,6 @@ namespace UE::Tasks
 
 					if (--(CounterRef.Get()) == 0)
 					{
-						//TArray<T> Result;
-						//for (int32 j = 0; j < Count; ++j)
-						//{
-						//	Result.Add(MoveTemp(*ValueRef->Find(j)));
-						//}
 						FirstErrorRef->SetValue(MoveTemp(ValueRef.Get()));
 
 						if (FailMode != EFailMode::Fast)
