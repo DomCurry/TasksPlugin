@@ -37,10 +37,10 @@ namespace UE::Tasks
 		FString Message;
 	};
 
-	uint64 ERROR_CONTEXT_FUTURE = 1;
-	uint64 ERROR_CANCELLED = 1;
+	inline uint64 ERROR_CONTEXT_FUTURE = 1;
+	inline uint64 ERROR_CANCELLED = 1;
 
-	FError MakeCancelledError()
+	inline FError MakeCancelledError()
 	{
 		return FError(ERROR_CONTEXT_FUTURE, ERROR_CANCELLED, TEXT("Cancelled Result"));
 	}

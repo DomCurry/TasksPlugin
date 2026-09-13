@@ -9,7 +9,7 @@
 
 namespace UE::Tasks
 {
-	uint64 ERROR_INVALID_ARGUMENT = 3;
+	inline uint64 ERROR_INVALID_ARGUMENT = 3;
 
 	enum class EFailMode
 	{
@@ -153,7 +153,7 @@ namespace UE::Tasks
 	template<typename T>
 	TAsyncFuture<TArray<T>> WhenAll(const TArray<TAsyncFuture<T>>& Futures) { return WhenAll<T>(Futures, EFailMode::Full); }
 
-	TAsyncFuture<void> WhenAll(const TArray<TAsyncFuture<void>>& Futures, const EFailMode FailMode)
+	inline TAsyncFuture<void> WhenAll(const TArray<TAsyncFuture<void>>& Futures, const EFailMode FailMode)
 
 	{
 		if (Futures.Num() == 0)
@@ -198,7 +198,7 @@ namespace UE::Tasks
 		return PromiseRef->GetFuture();
 	}
 
-	TAsyncFuture<void> WhenAll(const TArray<TAsyncFuture<void>>& Futures)
+	inline TAsyncFuture<void> WhenAll(const TArray<TAsyncFuture<void>>& Futures)
 	{
 		return WhenAll(Futures, EFailMode::Full);
 	}
@@ -221,7 +221,7 @@ namespace UE::Tasks
 		return PromiseRef->GetFuture();
 	}
 
-	TAsyncFuture<void> WaitAsync(const float DelayInSeconds)
+	inline TAsyncFuture<void> WaitAsync(const float DelayInSeconds)
 	{
 		const TSharedRef<TAsyncPromise<void>, ESPMode::ThreadSafe> Promise = MakeShared<TAsyncPromise<void>>();
 

@@ -125,7 +125,7 @@ namespace UE::Tasks
 		return TResult<T>(MakeCancelledError());
 	}
 
-	TResult<void> MakeCancelledResult()
+	inline TResult<void> MakeCancelledResult()
 	{
 		return TResult<void>(MakeCancelledError());
 	}
