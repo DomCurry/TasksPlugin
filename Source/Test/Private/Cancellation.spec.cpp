@@ -116,27 +116,21 @@ void FAsyncFuturesSpec_Cancelling::Define()
 		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
 
-	LatentIt("Result Then is called after cancelled Then", [this](const auto& Done)
+	LatentIt("Result Then runs even when its own promise is cancelled", [this](const auto& Done)
 	{
 		CancellationHandle.Cancel();
 
-		UE::Tasks::Async([]()
-		{
-			return UE::Tasks::TResult(5);
-		})
+		UE::Tasks::Async([]() { return UE::Tasks::TResult(5); })
 		.Then([this](UE::Tasks::TResult<int32> Result)
 		{
+			ContinuationCalled = true;
+			TestTrue("Continuation observed the cancellation", Result.IsCancelled());
 			return Result;
 		}, UE::Tasks::FOptions().Set(CancellationHandle))
-		.Then([](UE::Tasks::TResult<int32> Result)
+		.Then([this, Done](UE::Tasks::TResult<int32> Result)
 		{
-			//Then result-based continuation is called with "Cancelled" status
-			return UE::Tasks::TResult<bool>(Result.IsCancelled());
-		})
-		.Then([this, Done](UE::Tasks::TResult<bool> Result)
-		{
-			TestTrue("Result is completed", Result.HasValue());
-			TestTrue("Then received was 'cancel' state", Result.GetValue());
+			TestTrue("Result-taking continuation was called", ContinuationCalled);
+			TestTrue("Cancellation propagated", Result.IsCancelled());
 			Done.Execute();
 		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});

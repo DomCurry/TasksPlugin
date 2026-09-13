@@ -541,27 +541,31 @@ namespace UE::Tasks
 				}
 			}
 
+			// Note: if this continuation's own promise (InPromise) is already cancelled when it runs,
+			// ExecuteContinuation is still invoked. Whether that has any observable effect depends on
+			// the continuation's signature: a value-taking continuation is skipped by the guard inside
+			// its own ExecuteContinuation overload (SetValue is never called on an already-set promise
+			// either way), while a TResult-taking continuation deliberately has no such guard and is
+			// expected to observe the cancellation - it runs for its side effects, and its return value
+			// is discarded because SetValue on an already-claimed promise is a no-op.
 			void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 			{
 				check(PreviousPromise->IsSet());
 				auto Function = [
 					InPromise = MoveTemp(MyPromise),
-					InPreviousPromise = MoveTemp(PreviousPromise), 
+					InPreviousPromise = MoveTemp(PreviousPromise),
 					InContinuationFunction = MoveTemp(ContinuationFunction),
 					InLifetimeMonitor = MoveTemp(LifetimeMonitor)
 				]() mutable -> int32
 					{
-						if (!InPromise->IsSet())
+						if (auto PinnedObject = InLifetimeMonitor.Pin())
 						{
-							if (auto PinnedObject = InLifetimeMonitor.Pin())
-							{
-								check(InPreviousPromise->IsSet());
-								ExecuteContinuation(*InPromise, InPreviousPromise->Get(), MoveTemp(InContinuationFunction));
-							}
-							else
-							{
-								InPromise->SetValue(FError(ERROR_CONTEXT_FUTURE, ERROR_LIFETIME, TEXT("Owner lifetime expired")));
-							}
+							check(InPreviousPromise->IsSet());
+							ExecuteContinuation(*InPromise, InPreviousPromise->Get(), MoveTemp(InContinuationFunction));
+						}
+						else if (!InPromise->IsSet())
+						{
+							InPromise->SetValue(FError(ERROR_CONTEXT_FUTURE, ERROR_LIFETIME, TEXT("Owner lifetime expired")));
 						}
 
 						return 0;
