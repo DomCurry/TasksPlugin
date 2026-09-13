@@ -165,7 +165,7 @@ namespace UE::Tasks
 		TAsyncPromise& operator=(TAsyncPromise&& Other) = default;
 
 		TAsyncFuture<T> GetFuture() { return TAsyncFuture<T>(State); }
-		bool IsSet() const { return State->IsSet(); }
+		bool IsSet() const { return State->IsClaimed(); }
 		TResult<T> Get() const { return State->Get(); }
 
 		//fulfilling promise
@@ -177,7 +177,7 @@ namespace UE::Tasks
 		void SetValue(FError&& Result) const { State->SetValue(Result); }
 		void Cancel() const { SetValue(MakeCancelledError()); }
 
-	public:
+	private:
 		TSharedRef<Private::TPromiseState<T>, ESPMode::ThreadSafe> State;
 	};
 
@@ -196,7 +196,7 @@ namespace UE::Tasks
 		TAsyncPromise& operator=(TAsyncPromise&& Other) = default;
 
 		TAsyncFuture<void> GetFuture() { return TAsyncFuture<void>(State); }
-		bool IsSet() const { return State->IsSet(); }
+		bool IsSet() const { return State->IsClaimed(); }
 		TResult<void> Get() const { return State->Get(); }
 
 		//fulfilling promise
@@ -207,7 +207,7 @@ namespace UE::Tasks
 		void SetValue(FError&& Result) const { State->SetValue(TResult<void>(Result)); }
 		void Cancel() const { SetValue(MakeCancelledError()); }
 
-	public:
+	private:
 		TSharedRef<Private::TPromiseState<void>, ESPMode::ThreadSafe> State;
 	};
 

@@ -10,74 +10,59 @@
 namespace UE::Tasks::Private
 {
 	template<typename T>
-	class TPromiseState 
+	class TPromiseState
 	{
 	public:
 		TPromiseState()
-			: ValueSet(false)
-			, TriggeringTask(TGraphTask<FNullGraphTask>::CreateTask().ConstructAndHold(TStatId(), ENamedThreads::GameThread))
-			, Value(TOptional<TResult<T>>())
+			: CompletionEvent(FGraphEvent::CreateGraphEvent())
+			, Value()
 		{ }
 
 		~TPromiseState()
 		{
-			// Deliberate: a promise dropped without being fulfilled or cancelled means a future
-			// that will never complete, silently stalling any continuation chained onto it -
-			// worse to diagnose than an assert here, on whatever thread drops the last reference.
-			// Always resolve a promise: call Cancel() on it, or bind an FCancellationHandle.
-			check(IsSet()); //TFutures are going out of scope and they're holding promises
-			if (FTaskGraphInterface::IsRunning() && TriggeringTask->IsCompleted() == false)
-			{
-				//TriggeringTask->Unlock();
-			}
+			check(IsClaimed()); //TFutures are going out of scope and they're holding promises
 		}
 
-		bool IsSet() const { return ValueSet; }
+		bool IsSet() const { return ValuePublished.load(std::memory_order_acquire); }
+		bool IsClaimed() const { return ValueClaimed.load(std::memory_order_acquire); }
+
 		TResult<T> Get() const { check(IsSet() && Value.IsSet()); return Value.GetValue(); }
 
 		void SetValue(TResult<T>&& Result)
 		{
-			if (IsSet() == false)
+			bool bExpected = false;
+			if (!ValueClaimed.compare_exchange_strong(bExpected, true, std::memory_order_acq_rel))
 			{
-				ValueSet = true;
-				if (Triggered == false)
-				{
-					Value = Result;
-					Trigger();
-				}
+				return; // someone else already owns this promise
 			}
+
+			Value.Emplace(MoveTemp(Result));
+			ValuePublished.store(true, std::memory_order_release);
+			CompletionEvent->DispatchSubsequents();
 		}
 
 		void SetValue(const TResult<T>& Result)
 		{
-			if (IsSet() == false)
+			bool bExpected = false;
+			if (!ValueClaimed.compare_exchange_strong(bExpected, true, std::memory_order_acq_rel))
 			{
-				ValueSet = true;
-				if (Triggered == false)
-				{
-					Value = Result;
-					Trigger();
-				}
+				return; // someone else already owns this promise
 			}
+
+			Value.Emplace(Result);
+			ValuePublished.store(true, std::memory_order_release);
+			CompletionEvent->DispatchSubsequents();
 		}
 
 		FGraphEventRef GetCompletionEvent() const
 		{
-			return TriggeringTask->GetCompletionEvent();
+			return CompletionEvent;
 		}
 
 	private:
-		void Trigger()
-		{
-			check(IsSet());
-			GetCompletionEvent()->DispatchSubsequents();
-			Triggered = true;
-		}
-
-	public:
-		std::atomic_bool ValueSet = false;
-		std::atomic_bool Triggered = false;
-		TGraphTask<FNullGraphTask>* const TriggeringTask;
+		std::atomic_bool ValueClaimed{ false };
+		std::atomic_bool ValuePublished{ false };
+		FGraphEventRef CompletionEvent;
 
 		TOptional<TResult<T>> Value;
 	};
@@ -86,71 +71,56 @@ namespace UE::Tasks::Private
 	class TPromiseState<void>
 	{
 	public:
-		TPromiseState() 
-			: ValueSet(false)
-			, TriggeringTask(TGraphTask<FNullGraphTask>::CreateTask().ConstructAndHold(TStatId(), ENamedThreads::GameThread))
-			, Value(TOptional<TResult<void>>())
-		{}
+		TPromiseState()
+			: CompletionEvent(FGraphEvent::CreateGraphEvent())
+			, Value()
+		{ }
 
 		~TPromiseState()
 		{
-			// Deliberate: a promise dropped without being fulfilled or cancelled means a future
-			// that will never complete, silently stalling any continuation chained onto it -
-			// worse to diagnose than an assert here, on whatever thread drops the last reference.
-			// Always resolve a promise: call Cancel() on it, or bind an FCancellationHandle.
-			check(IsSet()); //TFutures are going out of scope and they're holding promises
-			if (FTaskGraphInterface::IsRunning() && TriggeringTask->IsCompleted() == false)
-			{
-				//TriggeringTask->Unlock();
-			}
-		} 
+			check(IsClaimed()); //TFutures are going out of scope and they're holding promises
+		}
 
-		bool IsSet() const { return ValueSet; }
+		bool IsSet() const { return ValuePublished.load(std::memory_order_acquire); }
+		bool IsClaimed() const { return ValueClaimed.load(std::memory_order_acquire); }
+
 		TResult<void> Get() const { check(IsSet() && Value.IsSet()); return Value.GetValue(); }
 
 		void SetValue(TResult<void>&& Result)
 		{
-			if (IsSet() == false)
+			bool bExpected = false;
+			if (!ValueClaimed.compare_exchange_strong(bExpected, true, std::memory_order_acq_rel))
 			{
-				ValueSet = true;
-				if (Triggered == false)
-				{
-					Value = Result;
-					Trigger();
-				}
+				return; // someone else already owns this promise
 			}
+
+			Value.Emplace(MoveTemp(Result));
+			ValuePublished.store(true, std::memory_order_release);
+			CompletionEvent->DispatchSubsequents();
 		}
 
 		void SetValue(const TResult<void>& Result)
 		{
-			if (IsSet() == false)
+			bool bExpected = false;
+			if (!ValueClaimed.compare_exchange_strong(bExpected, true, std::memory_order_acq_rel))
 			{
-				ValueSet = true;
-				if (Triggered == false)
-				{
-					Value = Result;
-					Trigger();
-				}
+				return; // someone else already owns this promise
 			}
+
+			Value.Emplace(Result);
+			ValuePublished.store(true, std::memory_order_release);
+			CompletionEvent->DispatchSubsequents();
 		}
 
 		FGraphEventRef GetCompletionEvent() const
 		{
-			return TriggeringTask->GetCompletionEvent();
+			return CompletionEvent;
 		}
 
 	private:
-		void Trigger() 
-		{ 
-			check(IsSet());
-			GetCompletionEvent()->DispatchSubsequents();
-			Triggered = true;
-		}
-
-	public:
-		std::atomic_bool ValueSet = false;
-		std::atomic_bool Triggered = false;
-		TGraphTask<FNullGraphTask>* const TriggeringTask;
+		std::atomic_bool ValueClaimed{ false };
+		std::atomic_bool ValuePublished{ false };
+		FGraphEventRef CompletionEvent;
 
 		TOptional<TResult<void>> Value;
 	};
