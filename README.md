@@ -22,14 +22,29 @@ A continuation is a key part of this plugin, allowing us to easily specify a uni
 This plugin also supports splitting and converging chains of futures to better marshall the work required. This is achieved through `WhenAll` and `WhenAny` functions - each of which produce their own `TAsyncFuture`.
 ### Cancellation
 There are cases where using these patterns is beneficial but not at the expense of the application crash resulting from a 'broken' or unfulfilled promise, in these cases we allow the cancellation of a `TAsyncPromise` allowing potential work to be abandoned with little overhead. This manifests as a specific error passed through the chain of results in the future values.
+
+**A broken promise is fatal, by design.** Dropping a promise without fulfilling or cancelling it is a hard assert (`~TPromiseState`), on whatever thread releases the last reference. This is deliberate: client code is expected to manage its cancellations consciously at all times. An unfulfilled promise means a future that never completes and a continuation chain that silently stalls, which is worse to diagnose than an immediate assert. Always resolve a promise — call `Cancel()` on it directly, or bind an `FCancellationHandle` so it happens automatically.
+
+Cancellation is also how an object owns its tasks: hold an `FCancellationHandle` as a member, pass it to every task you start via `FOptions`, and everything is cancelled when the object is collected — `~FCancellationState` cancels every promise ever bound to it. The handle is shared (`TSharedRef`) precisely so several objects can co-own a task's cancellation, but this means the handle must **outlive the work**. This cancels immediately and looks like nothing happened:
+
+```cpp
+{
+    FCancellationHandle Handle;
+    DoWork(FOptions().Set(Handle));
+}   // Handle dies, DoWork is cancelled
+```
+
+Store it as a member, not a local.
 ### Lifetime Monitoring
 A common use for the cancellation of a promise is that the object that has initiated the work has since been destroyed. In those cases this plugin provides a neat conversion for `UObject*` and `TSharedFromThis` types, that will remove the boilerplate of the weak pointer capture and pinning of the owning object inside the continuation logic.
+
+**Lifetime expiry is not cancellation.** When a monitored owner is destroyed, the continuation fails with `ERROR_LIFETIME` (code `2`), not `ERROR_CANCELLED` (code `1`), so `TResult::IsCancelled()` returns `false` for it. This distinction is deliberate: cancelling a handle is a decision to abandon work, whereas an owner being destroyed is the disappearance of one link in a chain whose other links may still be perfectly valid. Keeping the codes separate lets a downstream continuation tell "someone called `Cancel()`" apart from "the object that started this is gone" and react differently — use `TResult::IsOwnerExpired()` rather than hand-comparing error codes.
 ### FOptions
-The structure to associate any task with the `CancellationHandle` associated with it and the `Thread` it should run on. This plugin uses the `TaskGraph` system and while this currently only exposes the setting of the `Thread` to run the task on, this plugin attempts to avoid redundancy by allowing an `FOptions` structure to be provided to each continuation. Hopefully, this would be enough to allow the adaptation to any new async methodologies that Epic may develop in the future.
+The structure to associate any task with the `FCancellationHandle`, `Thread` and execution mechanism (`EAsyncExecution`) it should run under. An explicit thread is only honoured when the execution policy is `EAsyncExecution::TaskGraph` — the other policies (`Thread`, `ThreadPool`, ...) choose their own thread and ignore it. Named setters make the valid combinations easy to reach for: `OnTaskGraph(Thread)` (the default), `OnGameThread()`, `OnDedicatedThread()` and `OnThreadPool()`; the lower-level `Set(...)` overloads remain available for less common cases. This plugin attempts to avoid redundancy by allowing an `FOptions` structure to be provided to each continuation, in the hope that this is enough to allow adaptation to any new async methodologies Epic may develop in the future.
 ### Tests
 Included in this plugin are a suite of unit tests. These can be a good place to inspect functionality and the style of code produced by these structures. 
 ## Example
-Here's what it looks like when a function returns a future value and how you can define work to do when it ends.
+Here's what it looks like when a function returns a future value and how you can define work to do when it ends. The examples below assume `using namespace UE::Tasks;` and so drop that namespace's prefix.
 ```cpp
 void ULoginWidget::OnLoginClicked()
 {
@@ -49,27 +64,28 @@ void ULoginWidget::OnLoginClicked()
 ```
 If you're managing tasks you can chain them in this way - here we're hiding the initialization so we don't error if someone asks us to login before we're ready. We're also able to hide that we're doing a HTTP request to login from the frontend.
 ```cpp
-UE::Tasks::TAsyncFuture<FProfile> UBackend::Login(const FString& Username, const FString& Password)
+TAsyncFuture<FProfile> UBackend::Login(const FString& Username, const FString& Password)
 {
-  GetInitializationTask().Then(this, [this, Username, Password] ()
-  {
-    return HTTP->SendHTTP("www.login.com?u=%s&p=%s", Username, Password);
-  }, UE::Tasks::FOptions(ENamedThreads:AnyBackgroundNormalPri))
-  .Then(this, [this] (const FHTTPResponse Response)
-  {
-    if (Response.Code == 200) // OK
+  return GetInitializationTask()
+    .Then(this, [this, Username, Password] ()
     {
-      return FProfile(Response);
-    }
-    return HTTPError(Response);
-  });
+      return HTTP->SendHTTP(FString::Printf(TEXT("www.login.com?u=%s&p=%s"), *Username, *Password));
+    }, FOptions().Set(ENamedThreads::AnyBackgroundThreadNormalTask))
+    .Then(this, [this] (const FHTTPResponse& Response) -> TResult<FProfile>
+    {
+      if (Response.Code == 200) // OK
+      {
+        return FProfile(Response);
+      }
+      return HTTPError(Response);
+    });
 }
 ```
 The HTTP system has its own call and response framework but we're easily able to wrap them in a TAsyncPromise and convert it to a consistent pattern expected by the rest of the codebase.
 ```cpp
-UE::Tasks::TAsyncFuture<FHTTPResponse> HTTPRequester::SendHTTP(const FString& Address)
+TAsyncFuture<FHTTPResponse> HTTPRequester::SendHTTP(const FString& Address)
 {
-  UE::Tasks::TAsyncPromise<FHTTPResponse> Promise;
+  TAsyncPromise<FHTTPResponse> Promise;
   HTTP.Send(Address).SetCallback([Promise] (FString& Response)
     { Promise.SetValue(FHTTPResponse(Response)); });
   return Promise.GetFuture();

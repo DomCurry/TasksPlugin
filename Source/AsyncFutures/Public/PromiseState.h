@@ -21,6 +21,10 @@ namespace UE::Tasks::Private
 
 		~TPromiseState()
 		{
+			// Deliberate: a promise dropped without being fulfilled or cancelled means a future
+			// that will never complete, silently stalling any continuation chained onto it -
+			// worse to diagnose than an assert here, on whatever thread drops the last reference.
+			// Always resolve a promise: call Cancel() on it, or bind an FCancellationHandle.
 			check(IsSet()); //TFutures are going out of scope and they're holding promises
 			if (FTaskGraphInterface::IsRunning() && TriggeringTask->IsCompleted() == false)
 			{
@@ -88,8 +92,12 @@ namespace UE::Tasks::Private
 			, Value(TOptional<TResult<void>>())
 		{}
 
-		~TPromiseState() 
+		~TPromiseState()
 		{
+			// Deliberate: a promise dropped without being fulfilled or cancelled means a future
+			// that will never complete, silently stalling any continuation chained onto it -
+			// worse to diagnose than an assert here, on whatever thread drops the last reference.
+			// Always resolve a promise: call Cancel() on it, or bind an FCancellationHandle.
 			check(IsSet()); //TFutures are going out of scope and they're holding promises
 			if (FTaskGraphInterface::IsRunning() && TriggeringTask->IsCompleted() == false)
 			{

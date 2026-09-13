@@ -27,6 +27,15 @@ namespace UE::Tasks
 		const ValueType& GetValue() const	{ return ValueOrError.GetValue(); }
 
 		bool IsCancelled() const { return HasError() && GetError() == MakeCancelledError(); }
+		// True when a monitored owner (UObject/TSharedFromThis) was destroyed before this
+		// continuation ran - distinct from IsCancelled(): nobody called Cancel(), a link
+		// in the chain just disappeared. See ERROR_LIFETIME in Error.h.
+		bool IsOwnerExpired() const
+		{
+			return HasError()
+				&& GetError().GetContext() == ERROR_CONTEXT_FUTURE
+				&& GetError().GetCode() == ERROR_LIFETIME;
+		}
 
 		template<typename TransformType>
 		TResult<TransformType> Transform(TransformType&& Value = TransformType()) const
@@ -81,6 +90,15 @@ namespace UE::Tasks
 		//void GetValue() const { }
 
 		bool IsCancelled() const { return HasError() && GetError() == MakeCancelledError(); }
+		// True when a monitored owner (UObject/TSharedFromThis) was destroyed before this
+		// continuation ran - distinct from IsCancelled(): nobody called Cancel(), a link
+		// in the chain just disappeared. See ERROR_LIFETIME in Error.h.
+		bool IsOwnerExpired() const
+		{
+			return HasError()
+				&& GetError().GetContext() == ERROR_CONTEXT_FUTURE
+				&& GetError().GetCode() == ERROR_LIFETIME;
+		}
 
 		template<typename TransformType>
 		TResult<TransformType> Transform(TransformType&& Value = TransformType()) const
