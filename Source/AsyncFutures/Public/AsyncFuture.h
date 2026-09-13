@@ -19,6 +19,7 @@
 namespace UE::Tasks
 {
 	inline constexpr uint64 ERROR_LIFETIME = 2;
+	inline constexpr uint64 ERROR_UNSUPPORTED_EXECUTION = 4;
 	class FOptions;
 
 	namespace Private
@@ -315,11 +316,30 @@ namespace UE::Tasks
 
 		FOptions& Set(const ENamedThreads::Type ThreadIn) { Thread = ThreadIn; return *this; }
 		FOptions& Set(const FCancellationHandle& HandleIn) { CancellationHandle = HandleIn; return *this; }
-		FOptions& Set(const EAsyncExecution ExecutionIn) { Execution = ExecutionIn; return *this; }
-		
+		FOptions& Set(const EAsyncExecution ExecutionIn)
+		{
+			Execution = ExecutionIn;
+			if (ExecutionIn == EAsyncExecution::TaskGraphMainThread)
+			{
+				// TaskGraphMainThread means "TaskGraph, pinned to the game thread" - resolve the
+				// thread here so GetDesiredThread() reports the truth instead of DoTask silently
+				// overriding whatever thread was requested at dispatch time.
+				Thread = ENamedThreads::GameThread;
+			}
+			return *this;
+		}
+
+		// Intent-revealing setters that keep Execution and Thread consistent, so the combination
+		// cannot be got wrong the way the raw Set(...) overloads allow.
+		FOptions& OnTaskGraph(ENamedThreads::Type ThreadIn = ENamedThreads::AnyThread) { Execution = EAsyncExecution::TaskGraph; Thread = ThreadIn; return *this; }
+		FOptions& OnGameThread() { return OnTaskGraph(ENamedThreads::GameThread); }
+		FOptions& OnDedicatedThread() { Execution = EAsyncExecution::Thread; return *this; }
+		FOptions& OnThreadPool() { Execution = EAsyncExecution::ThreadPool; return *this; }
+
 		TOptional<FCancellationHandle> GetCancellation() const { return CancellationHandle; }
 		ENamedThreads::Type GetDesiredThread() const {	return Thread.Get(ENamedThreads::AnyThread); }
 		EAsyncExecution GetExecutionPolicy() const {	return Execution.Get(EAsyncExecution::TaskGraph); }
+		bool HasExplicitThread() const { return Thread.IsSet(); }
 
 	private:
 		TOptional<ENamedThreads::Type> Thread;
@@ -557,11 +577,29 @@ namespace UE::Tasks
 					FCancellationHandle Handle = Cancellation.GetValue();
 					Handle.Bind(*MyPromise);
 				}
+
+				ensureMsgf(!Options.HasExplicitThread() || Execution == EAsyncExecution::TaskGraph || Execution == EAsyncExecution::TaskGraphMainThread,
+					TEXT("FOptions: an explicit thread is only honoured by EAsyncExecution::TaskGraph; ")
+					TEXT("the requested thread will be ignored for this execution policy."));
+
+				if (!IsSupportedExecutionPolicy(Execution))
+				{
+					MyPromise->SetValue(FError(ERROR_CONTEXT_FUTURE, ERROR_UNSUPPORTED_EXECUTION,
+						TEXT("Unsupported execution policy for this build configuration")));
+				}
 			}
 
 			void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 			{
 				check(PreviousPromise->IsSet());
+
+				if (MyPromise->IsSet())
+				{
+					// Already failed in the constructor - e.g. an unsupported execution policy for
+					// this build configuration. Nothing left to dispatch.
+					return;
+				}
+
 				auto Function = [
 					InPromise = MoveTemp(MyPromise),
 					InPreviousPromise = MoveTemp(PreviousPromise), 
@@ -590,14 +628,6 @@ namespace UE::Tasks
 				switch (Execution)
 				{
 				case EAsyncExecution::TaskGraphMainThread:
-				{
-					TGraphTask<TAsyncGraphTask<int32>>::CreateTask().
-						ConstructAndDispatchWhenReady(
-							MoveTemp(Function), 
-							MoveTemp(Promise),
-							ENamedThreads::GameThread);
-				}
-				break;
 				case EAsyncExecution::TaskGraph:
 				{
 					TGraphTask<TAsyncGraphTask<int32>>::CreateTask().
@@ -681,7 +711,10 @@ namespace UE::Tasks
 #endif
 
 				default:
-					check(false); // not implemented!
+					// Unreachable: the constructor already fails the promise for any policy
+					// IsSupportedExecutionPolicy() doesn't recognise, and DoTask returns before
+					// reaching here in that case.
+					checkf(false, TEXT("Unhandled EAsyncExecution policy %d"), static_cast<int32>(Execution));
 				}
 			}
 
@@ -692,6 +725,24 @@ namespace UE::Tasks
 			}
 
 		private:
+
+			static bool IsSupportedExecutionPolicy(EAsyncExecution InExecution)
+			{
+				switch (InExecution)
+				{
+				case EAsyncExecution::TaskGraphMainThread:
+				case EAsyncExecution::TaskGraph:
+				case EAsyncExecution::Thread:
+				case EAsyncExecution::ThreadIfForkSafe:
+				case EAsyncExecution::ThreadPool:
+#if WITH_EDITOR
+				case EAsyncExecution::LargeThreadPool:
+#endif
+					return true;
+				default:
+					return false;
+				}
+			}
 
 			TPromiseRef MyPromise;
 			TSharedRef<TPromiseState<TResultType>, ESPMode::ThreadSafe> PreviousPromise;
