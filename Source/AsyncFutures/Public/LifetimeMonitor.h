@@ -3,6 +3,7 @@
 
 // Engine Includes
 #include "Templates/SharedPointer.h"
+#include "UObject/GarbageCollection.h"
 #include "UObject/Object.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/WeakObjectPtrTemplates.h"
@@ -23,29 +24,16 @@ namespace UE
 		class TWeakObjectRefType
 		{
 		public:
-			TWeakObjectRefType(T* Object) { static_assert(std::is_void<Enabled>::value == false, __FUNCTION__ ": Need to use an object that has lifetime management (UObject, TSharedFromThis)"); }
+			TWeakObjectRefType(T* Object) { static_assert(std::is_void<Enabled>::value == false, "TLifetimeMonitor: owner must have lifetime management (UObject or TSharedFromThis)"); }
 			bool Pin() const { return false; }
 		};
 
-		//TSharedFromThis lifetime monitor (Thread Safe)
-		template<typename T>
-		class TWeakObjectRefType<T, typename TEnableIf<TIsDerivedFrom<T, TSharedFromThis<T, ESPMode::ThreadSafe>>::IsDerived>::Type> : TWeakPtr<T, ESPMode::ThreadSafe>
-		{
-		public:
-			TWeakObjectRefType(T* Object) : TWeakPtr<T, ESPMode::ThreadSafe>(Object ? TWeakPtr<T, ESPMode::ThreadSafe>(Object->AsShared()) : nullptr) {}
-			TSharedPtr<T, ESPMode::ThreadSafe> Pin() const { return TWeakPtr<T, ESPMode::ThreadSafe>::Pin(); }
-		};
-
-		//TSharedFromThis lifetime monitor (Not Thread Safe)
-		template<typename T>
-		class TWeakObjectRefType<T, typename TEnableIf<TIsDerivedFrom<T, TSharedFromThis<T, ESPMode::NotThreadSafe>>::IsDerived>::Type> : TWeakPtr<T, ESPMode::NotThreadSafe>
-		{
-		public:
-			TWeakObjectRefType(T* Object) : TWeakPtr<T, ESPMode::NotThreadSafe>(Object ? TWeakPtr<T, ESPMode::NotThreadSafe>(Object->AsShared()) : nullptr) {}
-			TSharedPtr<T, ESPMode::NotThreadSafe> Pin() const { return TWeakPtr<T, ESPMode::NotThreadSafe>::Pin(); }
-		};
-
-		//TSharedFromThis BaseClass lifetime monitor (Thread Safe)
+		//TSharedFromThis lifetime monitor (Thread Safe). Routes through TSharedPtrTypes so that both
+		//direct derivation (class FThing : TSharedFromThis<FThing>) and derivation via a base class
+		//(class FThing : FBase, where FBase : TSharedFromThis<FBase>) are handled by a single
+		//specialization - PtrType resolves to T itself in the direct case. Do not reintroduce a
+		//separate direct-derivation specialization: it would be identical to this one after
+		//substitution (PtrType == T), making the two partial specializations ambiguous.
 		template<typename T>
 		class TWeakObjectRefType<T, typename TEnableIf<TIsDerivedFrom<T, TSharedFromThis<typename TSharedPtrTypes<T>::PtrType, ESPMode::ThreadSafe>>::IsDerived>::Type> : TWeakPtr<typename TSharedPtrTypes<T>::PtrType, ESPMode::ThreadSafe>
 		{
@@ -69,7 +57,18 @@ namespace UE
 		{
 		public:
 			TWeakObjectRefType(T* Object) : TWeakObjectPtr<T>(Object) {}
-			TStrongObjectPtr<T> Pin() const { return TStrongObjectPtr<T>(TWeakObjectPtr<T>::Get()); }
+
+			//Pin() runs inside the continuation, which may be scheduled on any worker thread (see
+			//FOptions::GetDesiredThread) - not just the game thread. Reading a TWeakObjectPtr and
+			//promoting it to a TStrongObjectPtr touches GC reference-tracking state that is not safe
+			//to mutate concurrently with garbage collection. FGCScopeGuard blocks GC for the duration
+			//of the promotion so this is safe from any thread; only the promotion itself is guarded,
+			//not the continuation body, so user code does not run under the GC lock.
+			TStrongObjectPtr<T> Pin() const
+			{
+				FGCScopeGuard ScopeGuard;
+				return TStrongObjectPtr<T>(TWeakObjectPtr<T>::Get());
+			}
 		};
 	}
 
