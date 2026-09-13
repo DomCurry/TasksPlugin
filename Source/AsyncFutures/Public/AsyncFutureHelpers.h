@@ -92,6 +92,11 @@ namespace UE::Tasks
 		return MakeReadyFuture().Then(Owner, MoveTemp(Function), FutureOptions);
 	}
 
+	// Requires T to be default-constructible: each slot in the result array is
+	// value-initialised up front (via SetNum) so that every element is a real,
+	// constructed T before it is either assigned to or destroyed - including
+	// slots belonging to futures that never complete because an earlier one
+	// failed.
 	template<typename T>
 	TAsyncFuture<TArray<T>> WhenAll(const TArray<TAsyncFuture<T>>& Futures, const EFailMode FailMode)
 	{
@@ -105,7 +110,7 @@ namespace UE::Tasks
 		const TSharedRef<TAsyncPromise<TArray<T>>, ESPMode::ThreadSafe> PromiseRef = MakeShared<TAsyncPromise<TArray<T>>, ESPMode::ThreadSafe>();
 		const TSharedRef<TArray<T>, ESPMode::ThreadSafe> ValueRef = MakeShared<TArray<T>, ESPMode::ThreadSafe>();
 		const TSharedRef<TAsyncPromise<TArray<T>>, ESPMode::ThreadSafe> FirstErrorRef = MakeShared<TAsyncPromise<TArray<T>>, ESPMode::ThreadSafe>();
-		ValueRef->AddZeroed(Count); //allow us to preserve the order 
+		ValueRef->SetNum(Count); //allow us to preserve the order
 
 		const auto SetPromise = [FirstErrorRef, PromiseRef]()
 		{
@@ -133,11 +138,6 @@ namespace UE::Tasks
 
 					if (--(CounterRef.Get()) == 0)
 					{
-						//TArray<T> Result;
-						//for (int32 j = 0; j < Count; ++j)
-						//{
-						//	Result.Add(MoveTemp(*ValueRef->Find(j)));
-						//}
 						FirstErrorRef->SetValue(MoveTemp(ValueRef.Get()));
 
 						if (FailMode != EFailMode::Fast)
