@@ -14,17 +14,17 @@ namespace UE::Tasks
 	class TResult
 	{
 	public:
-		using ResultType = T;
+		using ValueType = T;
 
-		TResult(const ResultType& Value)	: ValueOrError(TValueOrError_ValueProxy(Forward<const ResultType>(Value))) {}
-		TResult(ResultType&& Value)			: ValueOrError(TValueOrError_ValueProxy(MoveTemp(Value))) {}
+		TResult(const ValueType& Value)	: ValueOrError(TValueOrError_ValueProxy(Forward<const ValueType>(Value))) {}
+		TResult(ValueType&& Value)			: ValueOrError(TValueOrError_ValueProxy(MoveTemp(Value))) {}
 		TResult(const FError& Result)		: ValueOrError(TValueOrError_ErrorProxy(Forward<const FError>(Result))) {}
 		TResult(FError&& Result)				: ValueOrError(TValueOrError_ErrorProxy(MoveTemp(Result))) {}
 
 		bool HasError() const			{ return ValueOrError.HasError(); }
 		bool HasValue() const			{ return ValueOrError.HasValue(); }
 		const FError& GetError() const	{ return ValueOrError.GetError(); }
-		const ResultType& GetValue() const	{ return ValueOrError.GetValue(); }
+		const ValueType& GetValue() const	{ return ValueOrError.GetValue(); }
 
 		bool IsCancelled() const { return HasError() && GetError() == MakeCancelledError(); }
 
@@ -62,14 +62,14 @@ namespace UE::Tasks
 		}
 
 	private:
-		TValueOrError<ResultType, const FError> ValueOrError;
+		TValueOrError<ValueType, const FError> ValueOrError;
 	};
 
 	template<>
 	class TResult<void>
 	{
 	public:
-		using ResultType = void;
+		using ValueType = void;
 
 		TResult() : ValueOrError(TValueOrError_ValueProxy()) {}
 		TResult(const FError& Result) : ValueOrError(TValueOrError_ErrorProxy(Forward<const FError>(Result))) {}
@@ -116,7 +116,7 @@ namespace UE::Tasks
 		}
 
 	private:
-		TValueOrError<ResultType, const FError> ValueOrError;
+		TValueOrError<ValueType, const FError> ValueOrError;
 	};
 
 	template<typename T>

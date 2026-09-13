@@ -35,14 +35,14 @@ namespace UE::Tasks
 		class TUnwrap<T, typename TEnableIf<TIsFuture<T>::Value>::Type>
 		{
 		public:
-			using Type = typename TUnwrap<typename T::TResult>::Type;
+			using Type = typename TUnwrap<typename T::ValueType>::Type;
 		};
 
 		template<typename T>
 		class TUnwrap<T, typename TEnableIf<TIsResult<T>::Value>::Type>
 		{
 		public:
-			using Type = typename TUnwrap<typename T::ResultType>::Type;
+			using Type = typename TUnwrap<typename T::ValueType>::Type;
 		};
 
 		template<typename T>

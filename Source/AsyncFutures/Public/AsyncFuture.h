@@ -38,7 +38,7 @@ namespace UE::Tasks
 		using ExpectedResultType = TResult<UnwrappedResultType>;
 
 	public:
-		using TResult = ResultType;
+		using ValueType = ResultType;
 
 		//Construction and copying
 		TAsyncFuture() {}
@@ -99,7 +99,7 @@ namespace UE::Tasks
 		using ExpectedResultType = TResult<void>;
 
 	public:
-		using TResult = void;
+		using ValueType = void;
 
 		//Construction and copying
 		TAsyncFuture() {}
