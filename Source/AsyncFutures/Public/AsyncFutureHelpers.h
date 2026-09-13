@@ -1,6 +1,7 @@
 // Copyright Dominic Curry. All Rights Reserved.
 #pragma once
 #include <atomic>
+#include <type_traits>
 
 #include "AsyncFuture.h"
 #include "Result.h"
@@ -18,9 +19,9 @@ namespace UE::Tasks
 	};
 
 	template <class T>
-	TAsyncFuture<T> MakeReadyFuture(T&& Value)
+	TAsyncFuture<std::decay_t<T>> MakeReadyFuture(T&& Value)
 	{
-		TAsyncPromise<T> Promise = TAsyncPromise<T>();
+		TAsyncPromise<std::decay_t<T>> Promise = TAsyncPromise<std::decay_t<T>>();
 		Promise.SetValue(Forward<T>(Value));
 		return Promise.GetFuture();
 	}
@@ -44,7 +45,7 @@ namespace UE::Tasks
 	TAsyncFuture<T> MakeReadyFuture(TResult<T>&& Value)
 	{
 		TAsyncPromise<T> Promise = TAsyncPromise<T>();
-		Promise.SetValue(Value);
+		Promise.SetValue(MoveTemp(Value));
 		return Promise.GetFuture();
 	}
 	
@@ -83,13 +84,13 @@ namespace UE::Tasks
 	template<typename F>
 	auto Async(F&& Function, const FOptions& FutureOptions = FOptions())
 	{
-		return MakeReadyFuture().Then(MoveTemp(Function), FutureOptions);
+		return MakeReadyFuture().Then(Forward<F>(Function), FutureOptions);
 	}
 
 	template<typename T, typename F>
 	auto Async(T* Owner, F&& Function, const FOptions& FutureOptions = FOptions())
 	{
-		return MakeReadyFuture().Then(Owner, MoveTemp(Function), FutureOptions);
+		return MakeReadyFuture().Then(Owner, Forward<F>(Function), FutureOptions);
 	}
 
 	template<typename T>

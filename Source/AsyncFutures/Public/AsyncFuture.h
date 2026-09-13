@@ -57,7 +57,7 @@ namespace UE::Tasks
 		TAsyncFuture(TSharedRef<Private::TPromiseState<ResultType>, ESPMode::ThreadSafe>&& Other) : Promise(MoveTemp(Other)) {}
 		TAsyncFuture<ResultType>& operator= (TSharedRef<Private::TPromiseState<ResultType>, ESPMode::ThreadSafe>&& Other)
 		{
-			Promise = MoveTemp(Promise);
+			Promise = MoveTemp(Other);
 			return *this;
 		}
 		TAsyncFuture(const TSharedRef<Private::TPromiseState<ResultType>, ESPMode::ThreadSafe>& Other) : Promise(Other) {}
@@ -76,14 +76,14 @@ namespace UE::Tasks
 		template<typename Func>
 		auto Then(Func&& Function, const FOptions& Options = FOptions()) const
 		{
-			check(IsValid())
+			check(IsValid());
 			return Private::Then<Func, ResultType>(Forward<Func>(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<void>());
 		}
 
 		template<typename Func, typename TOwner>
 		auto Then(TOwner* Owner, Func&& Function, const FOptions& Options = FOptions()) const
 		{
-			check(IsValid())
+			check(IsValid());
 			return Private::Then<Func, ResultType>(Forward<Func>(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<TOwner>(Owner));
 		}
 
@@ -118,7 +118,7 @@ namespace UE::Tasks
 		TAsyncFuture(TSharedRef<Private::TPromiseState<void>, ESPMode::ThreadSafe>&& Other) : Promise(MoveTemp(Other)) {}
 		TAsyncFuture<void>& operator= (TSharedRef<Private::TPromiseState<void>, ESPMode::ThreadSafe>&& Other)
 		{
-			Promise = MoveTemp(Promise);
+			Promise = MoveTemp(Other);
 			return *this;
 		}
 		TAsyncFuture(const TSharedRef<Private::TPromiseState<void>, ESPMode::ThreadSafe>& Other) : Promise(Other) {}
@@ -138,14 +138,14 @@ namespace UE::Tasks
 		auto Then(Func&& Function, const FOptions& Options = FOptions()) const
 		{
 			check(IsValid());
-			return Private::Then(MoveTemp(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<void>());
+			return Private::Then<Func, void>(Forward<Func>(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<void>());
 		}
 
 		template<typename Func, typename TOwner>
 		auto Then(TOwner* Owner, Func&& Function, const FOptions& Options = FOptions()) const
 		{
 			check(IsValid());
-			return Private::Then(MoveTemp(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<TOwner>(Owner));
+			return Private::Then<Func, void>(Forward<Func>(Function), Promise.ToSharedRef(), Options, TLifetimeMonitor<TOwner>(Owner));
 		}
 
 	private:
