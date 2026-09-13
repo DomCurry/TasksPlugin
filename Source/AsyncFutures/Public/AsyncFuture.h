@@ -18,7 +18,7 @@
 
 namespace UE::Tasks
 {
-	uint64 ERROR_LIFETIME = 2;
+	inline uint64 ERROR_LIFETIME = 2;
 	class FOptions;
 
 	namespace Private

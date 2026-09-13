@@ -3,7 +3,7 @@
 
 //Engine Includes
 #include "Templates/IntegralConstant.h"
-#include "Traits/IsVoidType.h"
+#include <type_traits>
 
 //Module Includes
 #include "UnwrapTypes.h"
