@@ -12,7 +12,8 @@ public class AsyncFutureTests : ModuleRules
         });
 
         PrivateDependencyModuleNames.AddRange(new string[] {
-			"AsyncFutures"
+			"AsyncFutures",
+			"CoreUObject"
 		});
 	}
 }
