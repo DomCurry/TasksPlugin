@@ -280,27 +280,6 @@ namespace UE::Tasks
 		void Cancel() { State->Cancel(); }
 	private:
 		TSharedRef<Private::FCancellationState, ESPMode::ThreadSafe> State;
-		friend class FWeakCancellationHandle;
-	};
-
-	class FWeakCancellationHandle
-	{
-	public:
-		FWeakCancellationHandle() : State(MakeShared<Private::FCancellationState>()) {}
-
-		FWeakCancellationHandle(const FCancellationHandle& Other) : State(Other.State) {}
-		FWeakCancellationHandle(FCancellationHandle&& Other) : State(MoveTemp(Other.State)) {}
-		FWeakCancellationHandle& operator= (const FCancellationHandle& Other) { State = Other.State; return *this; }
-		FWeakCancellationHandle& operator= (FCancellationHandle&& Other) { State = MoveTemp(Other.State); return *this; }
-
-
-		FWeakCancellationHandle(const FWeakCancellationHandle& Other) : State(Other.State) {}
-		FWeakCancellationHandle(FWeakCancellationHandle&& Other) : State(MoveTemp(Other.State)) {}
-		FWeakCancellationHandle& operator= (const FWeakCancellationHandle& Other) { State = Other.State; return *this; }
-		FWeakCancellationHandle& operator= (FWeakCancellationHandle&& Other) { State = MoveTemp(Other.State); return *this; }
-
-	private:
-		TWeakPtr<Private::FCancellationState, ESPMode::ThreadSafe> State;
 	};
 
 	class FOptions
@@ -566,8 +545,7 @@ namespace UE::Tasks
 					InPromise = MoveTemp(MyPromise),
 					InPreviousPromise = MoveTemp(PreviousPromise), 
 					InContinuationFunction = MoveTemp(ContinuationFunction),
-					InLifetimeMonitor = MoveTemp(LifetimeMonitor),
-					InThread = MoveTemp(DesiredThread)
+					InLifetimeMonitor = MoveTemp(LifetimeMonitor)
 				]() mutable -> int32
 					{
 						if (!InPromise->IsSet())
