@@ -4,11 +4,13 @@
 // Engine Includes
 #include "Async/Async.h"
 #include "CoreTypes.h"
+#include "HAL/CriticalSection.h"
 #include "Tasks/Task.h"
 #include "Templates/SharedPointer.h"
 #include "Misc/AssertionMacros.h"
 #include "Misc/IQueuedWork.h"
 #include "Misc/QueuedThreadPool.h"
+#include "Misc/ScopeLock.h"
 
 // Module Includes
 #include "Error.h"
@@ -239,28 +241,38 @@ namespace UE::Tasks
 			~FCancellationState() { Cancel(); }
 			void Cancel()
 			{
-				Cancelled = true;
-				for (const TSharedRef<IBoundPromise, ESPMode::ThreadSafe>& Promise : Promises)
+				TArray<TSharedRef<IBoundPromise, ESPMode::ThreadSafe>> ToCancel;
+				{
+					FScopeLock Lock(&CriticalSection);
+					Cancelled = true;
+					ToCancel = MoveTemp(Promises);
+					Promises.Empty();
+				}
+
+				for (const TSharedRef<IBoundPromise, ESPMode::ThreadSafe>& Promise : ToCancel)
 				{
 					Promise->Cancel();
 				}
-				Promises.Empty();
 			}
 
 			template<typename TPromiseType>
 			void Bind(const TAsyncPromise<TPromiseType>& PromiseIn)
 			{
-				if (Cancelled)
 				{
-					PromiseIn.Cancel();
-					return;
+					FScopeLock Lock(&CriticalSection);
+					if (!Cancelled)
+					{
+						Promises.Emplace(MakeShared<TBoundPromise<TPromiseType>>(PromiseIn));
+						return;
+					}
 				}
-				TSharedRef<TBoundPromise<TPromiseType>, ESPMode::ThreadSafe> BoundPromise = MakeShared<TBoundPromise<TPromiseType>>(PromiseIn);
-				Promises.Emplace(MoveTemp(BoundPromise));
+
+				PromiseIn.Cancel(); // outside the lock
 			}
 
 		private:
-			std::atomic_bool Cancelled = false;
+			mutable FCriticalSection CriticalSection;
+			bool Cancelled = false;
 			TArray<TSharedRef<IBoundPromise, ESPMode::ThreadSafe>> Promises;
 		};
 	}

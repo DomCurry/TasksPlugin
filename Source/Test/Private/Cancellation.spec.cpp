@@ -59,13 +59,66 @@ void FAsyncFuturesSpec_Cancelling::Define()
 	{
 		CancellationHandle.Cancel();
 
-		UE::Tasks::Async([]()
+		UE::Tasks::Async([this]()
 		{
+			ContinuationCalled = true;
 			return UE::Tasks::TResult(5);
 		}, UE::Tasks::FOptions().Set(CancellationHandle))
 		.Then([this, Done](UE::Tasks::TResult<int32> Result)
 		{
 			TestTrue("Result result was cancelled or set", Result.IsCancelled());
+			TestFalse("Continuation body was not run after cancel", ContinuationCalled);
+			Done.Execute();
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+	});
+
+	It("Bind racing Cancel never leaves a promise unset", [this]()
+	{
+		constexpr int32 NumIterations = 2000;
+		for (int32 Index = 0; Index < NumIterations; ++Index)
+		{
+			UE::Tasks::FCancellationHandle Handle;
+			UE::Tasks::TAsyncPromise<void> Prm;
+
+			TFuture<void> CancelThread = ::Async(EAsyncExecution::ThreadPool, [Handle]() mutable
+			{
+				Handle.Cancel();
+			});
+
+			UE::Tasks::TAsyncFuture<int32> Future = Prm.GetFuture().Then([]()
+			{
+				return UE::Tasks::TResult<int32>(5);
+			}, UE::Tasks::FOptions().Set(Handle));
+
+			Prm.SetValue();
+
+			FEvent* CompletionEvent = FPlatformProcess::GetSynchEventFromPool(false);
+			Future.Then([this, CompletionEvent](UE::Tasks::TResult<int32> Result)
+			{
+				TestTrue("Result was cancelled or set, never left unset", Result.HasValue() || Result.IsCancelled());
+				CompletionEvent->Trigger();
+			});
+
+			CompletionEvent->Wait();
+			FPlatformProcess::ReturnSynchEventToPool(CompletionEvent);
+			CancelThread.Wait();
+		}
+	});
+
+	LatentIt("Destroying the last handle cancels bound work", [this](const auto& Done)
+	{
+		UE::Tasks::TAsyncPromise<void> Gate;
+		UE::Tasks::TAsyncFuture<int32> Future;
+		{
+			UE::Tasks::FCancellationHandle ScopedHandle;
+			Future = Gate.GetFuture().Then([]() { return UE::Tasks::TResult<int32>(5); },
+				UE::Tasks::FOptions().Set(ScopedHandle));
+		}   // ScopedHandle dies here
+
+		Gate.SetValue();
+		Future.Then([this, Done](const UE::Tasks::TResult<int32>& Result)
+		{
+			TestTrue("Cancelled by handle destruction", Result.IsCancelled());
 			Done.Execute();
 		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
