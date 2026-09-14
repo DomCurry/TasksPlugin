@@ -84,13 +84,19 @@ namespace UE::Tasks
 	template<typename F>
 	auto Async(F&& Function, const FOptions& FutureOptions = FOptions())
 	{
-		return MakeReadyFuture().Then(Forward<F>(Function), FutureOptions);
+		// MakeReadyFuture() is already resolved, so without this the continuation would qualify to
+		// run inline and Async() would be synchronous on the caller's thread.
+		FOptions AsyncOptions = FutureOptions;
+		AsyncOptions.RequireAsync();
+		return MakeReadyFuture().Then(Forward<F>(Function), AsyncOptions);
 	}
 
 	template<typename T, typename F>
 	auto Async(T* Owner, F&& Function, const FOptions& FutureOptions = FOptions())
 	{
-		return MakeReadyFuture().Then(Owner, Forward<F>(Function), FutureOptions);
+		FOptions AsyncOptions = FutureOptions;
+		AsyncOptions.RequireAsync();
+		return MakeReadyFuture().Then(Owner, Forward<F>(Function), AsyncOptions);
 	}
 
 	// Requires T to be default-constructible: each slot in the result array is

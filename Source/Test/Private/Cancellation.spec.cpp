@@ -2,6 +2,15 @@
 #include <CoreMinimal.h>
 #include <AsyncFutures.h>
 
+namespace
+{
+	class FCancellationTestOwner : public TSharedFromThis<FCancellationTestOwner>
+	{
+	public:
+		virtual ~FCancellationTestOwner() = default;
+	};
+}
+
 BEGIN_DEFINE_SPEC(FAsyncFuturesSpec_Cancelling, "AsyncFutures.Cancelling", EAutomationTestFlags::ProductFilter | EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext)
 
 bool ContinuationCalled = false;
@@ -209,6 +218,75 @@ void FAsyncFuturesSpec_Cancelling::Define()
 		{
 			TestTrue("Result is completed", Result.IsCancelled());
 			TestFalse("Then with raw value executed", ContinuationCalled);
+			Done.Execute();
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+	});
+
+	It("Bind does not retain continuations that have already run", [this]()
+	{
+		UE::Tasks::FCancellationHandle Handle;
+
+		// Each gate is resolved before Then is called, so the continuation runs inline and the entry
+		// is resolved by the time the next Bind sweeps.
+		constexpr int32 NumBound = 64;
+		for (int32 Index = 0; Index < NumBound; ++Index)
+		{
+			UE::Tasks::TAsyncPromise<void> Gate;
+			Gate.SetValue();
+			Gate.GetFuture().Then([]() { return 5; }, UE::Tasks::FOptions().Set(Handle));
+		}
+
+		TestTrue("Resolved entries were swept rather than retained", Handle.GetTrackedCount() < NumBound);
+	});
+
+	LatentIt("A dead owner reports a lifetime error rather than a cancellation", [this](const auto& Done)
+	{
+		// Both conditions apply at once. Pin() is the precondition for touching the owner at all, so
+		// lifetime wins: handing a cancelled result to a continuation whose owner is gone would mean
+		// running it against a dangling this.
+		UE::Tasks::TAsyncPromise<void> Gate;
+		UE::Tasks::TAsyncFuture<int32> Future;
+		{
+			TSharedPtr<FCancellationTestOwner> Owner = MakeShared<FCancellationTestOwner>();
+			Future = Gate.GetFuture().Then(Owner.Get(), [this]()
+			{
+				ContinuationCalled = true;
+				return 5;
+			}, UE::Tasks::FOptions().Set(CancellationHandle));
+		}   // Owner dies here, while the handle is still live
+
+		CancellationHandle.Cancel();
+
+		Future.Then([this, Done](const UE::Tasks::TResult<int32>& Result)
+		{
+			TestFalse("Continuation body did not run", ContinuationCalled);
+			TestTrue("Error reported", Result.HasError());
+			TestFalse("Not reported as a cancellation", Result.IsCancelled());
+			TestEqual("Lifetime error code", Result.GetError().GetCode(), UE::Tasks::ERROR_LIFETIME);
+			Done.Execute();
+		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
+	});
+
+	LatentIt("A continuation can cancel its own handle while running", [this](const auto& Done)
+	{
+		// Cancel invokes continuations outside its own lock precisely so this is safe - a
+		// continuation is free to re-enter Cancel()/Bind() on the handle that just triggered it.
+		UE::Tasks::TAsyncPromise<void> Gate;
+		UE::Tasks::TAsyncFuture<void> Future = Gate.GetFuture().Then([this](UE::Tasks::TResult<void> Result)
+		{
+			ContinuationCalled = true;
+			CancellationHandle.Cancel();
+			// Propagated deliberately: the continuation is now the only thing that completes this
+			// promise, so returning a plain value here would override the cancellation instead.
+			return Result;
+		}, UE::Tasks::FOptions().Set(CancellationHandle));
+
+		CancellationHandle.Cancel();
+
+		Future.Then([this, Done](const UE::Tasks::TResult<void>& Result)
+		{
+			TestTrue("Continuation ran", ContinuationCalled);
+			TestTrue("Result was cancelled", Result.IsCancelled());
 			Done.Execute();
 		}, UE::Tasks::FOptions().Set(ENamedThreads::GameThread));
 	});
