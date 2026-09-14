@@ -1,6 +1,8 @@
 // Copyright Dominic Curry. All Rights Reserved.
 #pragma once
 
+#include <atomic>
+
 // Engine Includes
 #include "Async/Async.h"
 #include "CoreTypes.h"
@@ -215,20 +217,30 @@ namespace UE::Tasks
 
 	namespace Private
 	{
-		class IBoundPromise
+		class ICancellable
 		{
 		public:
-			virtual void Cancel() const = 0;
-			virtual ~IBoundPromise() {}
+			virtual ~ICancellable() {}
+
+			// Run the bound work with a cancelled input, unless some other path already claimed it.
+			// bAllowInline is a ceiling, not a floor: false forbids running user code on the calling
+			// thread, true only permits it if the work's own options allow.
+			virtual void RunCancelled(bool bAllowInline) = 0;
+
+			// "Cancellation can no longer reach this" - not the same question as "is the promise set".
+			virtual bool IsResolved() const = 0;
 		};
 
 		template<typename TPromiseType>
-		class TBoundPromise : public IBoundPromise
+		class TBoundPromise : public ICancellable
 		{
 		public:
 			TBoundPromise(const TAsyncPromise<TPromiseType>& PromiseIn) : Promise(PromiseIn) {  }
 			TBoundPromise(TAsyncPromise<TPromiseType>&& PromiseIn) : Promise(MoveTemp(PromiseIn)) {  }
-			virtual void Cancel() const override { Promise.Cancel(); }
+
+			// A bare promise has no continuation to run, so cancelling it is just resolving it.
+			virtual void RunCancelled(bool /*bAllowInline*/) override { Promise.Cancel(); }
+			virtual bool IsResolved() const override { return Promise.IsSet(); }
 		private:
 			TAsyncPromise<TPromiseType> Promise;
 		};
@@ -241,42 +253,87 @@ namespace UE::Tasks
 			// state cancels everything ever bound to it. This is how an object owns its tasks:
 			// hold the handle as a member (not a local!) and every task started with it is
 			// cancelled when the object is collected.
-			~FCancellationState() { Cancel(); }
-			void Cancel()
-			{
-				TArray<TSharedRef<IBoundPromise, ESPMode::ThreadSafe>> ToCancel;
-				{
-					FScopeLock Lock(&CriticalSection);
-					Cancelled = true;
-					ToCancel = MoveTemp(Promises);
-					Promises.Empty();
-				}
+			//
+			// Teardown dispatches rather than running inline: the object that owned this handle is
+			// usually mid-destruction, and a continuation re-entering it would run against
+			// half-destroyed state.
+			~FCancellationState() { Cancel(/*bAllowInline*/ false); }
 
-				for (const TSharedRef<IBoundPromise, ESPMode::ThreadSafe>& Promise : ToCancel)
-				{
-					Promise->Cancel();
-				}
-			}
+			void Cancel() { Cancel(/*bAllowInline*/ true); }
 
-			template<typename TPromiseType>
-			void Bind(const TAsyncPromise<TPromiseType>& PromiseIn)
+			void Bind(const TSharedRef<ICancellable, ESPMode::ThreadSafe>& Cancellable)
 			{
 				{
 					FScopeLock Lock(&CriticalSection);
 					if (!Cancelled)
 					{
-						Promises.Emplace(MakeShared<TBoundPromise<TPromiseType>>(PromiseIn));
+						// Entries are otherwise append-only for the handle's whole life, so a
+						// long-lived handle tagging many short-lived tasks retains every one of them.
+						// Sweep here, under the lock Bind/Cancel already share - IsResolved() reads
+						// only an atomic, so it cannot re-enter us. Gated on a doubling threshold
+						// because sweeping on every Bind would be O(N) per call, i.e. O(N^2) for a
+						// handle with N genuinely outstanding tasks - a worse trap than the leak.
+						if (Cancellables.Num() >= SweepThreshold)
+						{
+							Cancellables.RemoveAllSwap(
+								[](const TSharedRef<ICancellable, ESPMode::ThreadSafe>& Entry)
+								{
+									return Entry->IsResolved();
+								}, EAllowShrinking::No);
+
+							SweepThreshold = FMath::Max(MinSweepThreshold, Cancellables.Num() * 2);
+						}
+
+						Cancellables.Emplace(Cancellable);
 						return;
 					}
 				}
 
-				PromiseIn.Cancel(); // outside the lock
+				// Outside the lock - this now runs user code, not just a SetValue, and that code is
+				// free to bind to or cancel this same handle.
+				Cancellable->RunCancelled(/*bAllowInline*/ true);
+			}
+
+			template<typename TPromiseType>
+			void Bind(const TAsyncPromise<TPromiseType>& PromiseIn)
+			{
+				const TSharedRef<ICancellable, ESPMode::ThreadSafe> Cancellable =
+					MakeShared<TBoundPromise<TPromiseType>, ESPMode::ThreadSafe>(PromiseIn);
+				Bind(Cancellable);
+			}
+
+			// Diagnostics: how many bound entries are still tracked. Exposed so the sweep above can
+			// be tested without reaching into the array itself.
+			int32 GetTrackedCount() const
+			{
+				FScopeLock Lock(&CriticalSection);
+				return Cancellables.Num();
 			}
 
 		private:
+			void Cancel(bool bAllowInline)
+			{
+				TArray<TSharedRef<ICancellable, ESPMode::ThreadSafe>> ToCancel;
+				{
+					FScopeLock Lock(&CriticalSection);
+					Cancelled = true;
+					ToCancel = MoveTemp(Cancellables);
+					Cancellables.Empty();
+					SweepThreshold = MinSweepThreshold;
+				}
+
+				for (const TSharedRef<ICancellable, ESPMode::ThreadSafe>& Entry : ToCancel)
+				{
+					Entry->RunCancelled(bAllowInline);
+				}
+			}
+
+			static constexpr int32 MinSweepThreshold = 8;
+
 			mutable FCriticalSection CriticalSection;
 			bool Cancelled = false;
-			TArray<TSharedRef<IBoundPromise, ESPMode::ThreadSafe>> Promises;
+			int32 SweepThreshold = MinSweepThreshold;
+			TArray<TSharedRef<ICancellable, ESPMode::ThreadSafe>> Cancellables;
 		};
 	}
 
@@ -290,6 +347,9 @@ namespace UE::Tasks
 		FCancellationHandle& operator= (const FCancellationHandle& Other) { State = Other.State; return *this; }
 		FCancellationHandle& operator= (FCancellationHandle&& Other) { State = MoveTemp(Other.State); return *this; }
 
+		void Bind(const TSharedRef<Private::ICancellable, ESPMode::ThreadSafe>& Cancellable) { State->Bind(Cancellable); }
+		// Diagnostics only - see FCancellationState::GetTrackedCount.
+		int32 GetTrackedCount() const { return State->GetTrackedCount(); }
 		template<typename TPromiseType>
 		void Bind(const TAsyncPromise<TPromiseType>& PromiseIn) { State->Bind(PromiseIn); }
 		void Cancel() { State->Cancel(); }
@@ -329,6 +389,13 @@ namespace UE::Tasks
 		FOptions& OnDedicatedThread() { Execution = EAsyncExecution::Thread; return *this; }
 		FOptions& OnThreadPool() { Execution = EAsyncExecution::ThreadPool; return *this; }
 
+		// "Start this work - don't run it on my thread." Distinct from naming a thread: the caller
+		// doesn't care which thread, only that it isn't this one, right now. Async() sets this, which
+		// is what keeps it asynchronous even though its upstream (MakeReadyFuture) is always already
+		// resolved and would otherwise qualify for inline execution.
+		FOptions& RequireAsync() { bRequireAsync = true; return *this; }
+		bool RequiresAsync() const { return bRequireAsync; }
+
 		TOptional<FCancellationHandle> GetCancellation() const { return CancellationHandle; }
 		ENamedThreads::Type GetDesiredThread() const {	return Thread.Get(ENamedThreads::AnyThread); }
 		EAsyncExecution GetExecutionPolicy() const {	return Execution.Get(EAsyncExecution::TaskGraph); }
@@ -336,10 +403,18 @@ namespace UE::Tasks
 			return Thread.IsSet() && ENamedThreads::GetThreadIndex(Thread.GetValue()) != ENamedThreads::AnyThread;
 		}
 
+		// True when a thread was named at all, including ENamedThreads::AnyThread and priority-only
+		// values like AnyBackgroundThreadNormalTask whose thread index masks back to AnyThread.
+		// Deliberately weaker than HasExplicitThread(): inline execution keys off this one, because
+		// naming any thread - even a priority class - is a scheduling preference that running on the
+		// calling thread would quietly violate.
+		bool HasThreadPreference() const { return Thread.IsSet(); }
+
 	private:
 		TOptional<ENamedThreads::Type> Thread;
 		TOptional<FCancellationHandle> CancellationHandle;
 		TOptional<EAsyncExecution> Execution;
+		bool bRequireAsync = false;
 	};
 
 	namespace Private
@@ -546,17 +621,52 @@ namespace UE::Tasks
 
 	namespace Private
 	{
-		//Wrapper task for the async call. When this executes we then schedule a free task on whatever thread/execution we've specified
+		// Inline continuations recurse: a continuation running on a ready future can call .Then()
+		// again, directly or through the IsXxxToFuture overloads of ExecuteContinuation, which each
+		// chain a .Then() onto whatever future the user returned. A self-chaining continuation over
+		// ready futures would otherwise recurse until the stack ran out. Past the cap we fall back to
+		// the task graph, which costs latency rather than correctness.
+		//
+		// A per-module copy of the counter is fine - the cap only has to be *a* bound, not a globally
+		// shared one - so this deliberately does not reach for anything with stricter linkage.
+		inline constexpr int32 MaxInlineContinuationDepth = 16;
+
+		inline int32& GetInlineContinuationDepth()
+		{
+			static thread_local int32 Depth = 0;
+			return Depth;
+		}
+
+		class FInlineContinuationScope
+		{
+		public:
+			static bool CanEnter() { return GetInlineContinuationDepth() < MaxInlineContinuationDepth; }
+
+			FInlineContinuationScope() { ++GetInlineContinuationDepth(); }
+			~FInlineContinuationScope() { --GetInlineContinuationDepth(); }
+
+			FInlineContinuationScope(const FInlineContinuationScope&) = delete;
+			FInlineContinuationScope& operator=(const FInlineContinuationScope&) = delete;
+		};
+
+		// The continuation's payload, owned independently of the graph task that waits on the upstream
+		// promise, so that cancellation can reach it directly: a cancelled continuation runs straight
+		// away rather than waiting for - or ever reading - an upstream that may never resolve.
+		//
+		// Exactly one of RunFromUpstream()/RunCancelled() ever executes, decided by ExecutionClaimed.
+		// The winner moves the payload out and is the only thing that completes the promise, which is
+		// what keeps downstream continuations ordered behind this one.
 		template<typename TFunctionType, typename TResultType, typename TPromiseType, typename TLifetimeMonitor>
-		class TContinuationTask : public FAsyncGraphTaskBase
+		class TContinuationState : public ICancellable
 		{
 			using TPromiseRef = TSharedRef<TAsyncPromise<TPromiseType>, ESPMode::ThreadSafe>;
+			using TPreviousRef = TSharedRef<TPromiseState<TResultType>, ESPMode::ThreadSafe>;
 			using TRootFunction = typename std::remove_cv_t<typename TRemoveReference<TFunctionType>::Type>;
 
 		public:
-			TContinuationTask(TFunctionType&& InFunction, 
+			TContinuationState(TFunctionType&& InFunction,
 				TPromiseRef&& InPromise,
-				const TSharedRef<TPromiseState<TResultType>, ESPMode::ThreadSafe>& InPreviousPromise,
+				const TPreviousRef& InPreviousPromise,
 				TLifetimeMonitor&& InLifetimeMonitor,
 				const FOptions& Options)
 				: MyPromise(MoveTemp(InPromise))
@@ -565,54 +675,85 @@ namespace UE::Tasks
 				, LifetimeMonitor(MoveTemp(InLifetimeMonitor))
 				, DesiredThread(Options.GetDesiredThread())
 				, Execution(Options.GetExecutionPolicy())
+				// TaskGraph with no thread named at all is the only combination where "the thread
+				// that called us" is indistinguishable from "the thread we were asked for".
+				// HasThreadPreference(), not HasExplicitThread(): the latter masks the priority bits
+				// off, so OnTaskGraph(AnyBackgroundThreadNormalTask) would look unpinned and get
+				// inlined onto the calling thread, which is exactly what it asked us not to do.
+				, bInlineEligible(Options.GetExecutionPolicy() == EAsyncExecution::TaskGraph
+					&& !Options.HasThreadPreference()
+					&& !Options.RequiresAsync())
 			{
-				const TOptional<FCancellationHandle>& Cancellation = Options.GetCancellation();
-				if (Cancellation.IsSet())
-				{
-					FCancellationHandle Handle = Cancellation.GetValue();
-					Handle.Bind(*MyPromise);
-				}
-
 				ensureMsgf(!Options.HasExplicitThread() || Execution == EAsyncExecution::TaskGraph || Execution == EAsyncExecution::TaskGraphMainThread,
 					TEXT("FOptions: an explicit thread is only honoured by EAsyncExecution::TaskGraph; ")
 					TEXT("the requested thread will be ignored for this execution policy."));
 
 				if (!IsSupportedExecutionPolicy(Execution))
 				{
+					// Claim execution here rather than carrying a flag both run paths would have to
+					// remember to test: there is nothing to dispatch and nothing to cancel, so any
+					// later RunFromUpstream()/RunCancelled() simply loses the CAS.
+					ExecutionClaimed.store(true, std::memory_order_release);
 					MyPromise->SetValue(FError(ERROR_CONTEXT_FUTURE, ERROR_UNSUPPORTED_EXECUTION,
 						TEXT("Unsupported execution policy for this build configuration")));
 				}
 			}
 
-			// Note: if this continuation's own promise (InPromise) is already cancelled when it runs,
-			// ExecuteContinuation is still invoked. Whether that has any observable effect depends on
-			// the continuation's signature: a value-taking continuation is skipped by the guard inside
-			// its own ExecuteContinuation overload (SetValue is never called on an already-set promise
-			// either way), while a TResult-taking continuation deliberately has no such guard and is
-			// expected to observe the cancellation - it runs for its side effects, and its return value
-			// is discarded because SetValue on an already-claimed promise is a no-op.
-			void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
-			{
-				check(PreviousPromise->IsSet());
+			bool IsExecuted() const { return ExecutionClaimed.load(std::memory_order_acquire); }
 
-				if (MyPromise->IsSet())
+			// Deliberately the atomic rather than MyPromise->IsSet(): MyPromise is moved-from once
+			// execution has been claimed, so it is not safe to dereference here.
+			virtual bool IsResolved() const override { return IsExecuted(); }
+
+			void RunFromUpstream()
+			{
+				if (!TryClaimExecution())
 				{
-					// Already failed in the constructor - e.g. an unsupported execution policy for
-					// this build configuration. Nothing left to dispatch.
 					return;
 				}
 
+				// Only valid on this path - the cancel path may run with the upstream unresolved.
+				check(PreviousPromise->IsSet());
+				ExecuteWith(PreviousPromise->Get(), /*bAllowInline*/ true);
+			}
+
+			// Note the input: a cancelled continuation is handed a cancelled TResult rather than the
+			// upstream's. That is what lets a TResult-taking continuation observe the cancellation,
+			// and what makes the value-taking overloads propagate the error without running the body.
+			virtual void RunCancelled(bool bAllowInline) override
+			{
+				if (!TryClaimExecution())
+				{
+					return;
+				}
+
+				ExecuteWith(TResult<TResultType>(MakeCancelledError()), bAllowInline);
+			}
+
+		private:
+			bool TryClaimExecution()
+			{
+				bool bExpected = false;
+				return ExecutionClaimed.compare_exchange_strong(bExpected, true, std::memory_order_acq_rel);
+			}
+
+			void ExecuteWith(TResult<TResultType>&& Input, bool bAllowInline)
+			{
+				// Only the CAS winner reaches here, so moving the payload out of the still-shared
+				// state is safe, and it releases the user functor and the upstream promise as soon as
+				// the work is handed off. Nothing may read these members afterwards - hence
+				// IsResolved() reading only the atomic.
 				auto Function = [
 					InPromise = MoveTemp(MyPromise),
 					InPreviousPromise = MoveTemp(PreviousPromise),
 					InContinuationFunction = MoveTemp(ContinuationFunction),
-					InLifetimeMonitor = MoveTemp(LifetimeMonitor)
+					InLifetimeMonitor = MoveTemp(LifetimeMonitor),
+					InInput = MoveTemp(Input)
 				]() mutable -> int32
 					{
 						if (auto PinnedObject = InLifetimeMonitor.Pin())
 						{
-							check(InPreviousPromise->IsSet());
-							ExecuteContinuation(*InPromise, InPreviousPromise->Get(), MoveTemp(InContinuationFunction));
+							ExecuteContinuation(*InPromise, InInput, MoveTemp(InContinuationFunction));
 						}
 						else if (!InPromise->IsSet())
 						{
@@ -621,6 +762,18 @@ namespace UE::Tasks
 
 						return 0;
 					};
+
+				// Dispatching once the graph has gone would strand the promise, and an unfulfilled
+				// promise trips ~TPromiseState's check(IsClaimed()) - so during shutdown running here
+				// is the only option left, whatever the options asked for.
+				const bool bGraphUnavailable = !FTaskGraphInterface::IsRunning();
+				if (bGraphUnavailable || (bAllowInline && bInlineEligible && FInlineContinuationScope::CanEnter()))
+				{
+					FInlineContinuationScope Scope;
+					Function();
+					return;
+				}
+
 				TPromise<int32> Promise = TPromise<int32>();
 				//Copied from Async.h to allow us to pass the thread to the task graph
 				switch (Execution)
@@ -655,7 +808,9 @@ namespace UE::Tasks
 					}
 					else
 					{
-						Function();
+						// ~TPromise asserts the promise was fulfilled, so the non-threaded
+						// fallbacks have to set it rather than just running the work.
+						Promise.SetValue(Function());
 					}
 					break;
 
@@ -678,7 +833,9 @@ namespace UE::Tasks
 					}
 					else
 					{
-						Function();
+						// ~TPromise asserts the promise was fulfilled, so the non-threaded
+						// fallbacks have to set it rather than just running the work.
+						Promise.SetValue(Function());
 					}
 					break;
 
@@ -690,7 +847,9 @@ namespace UE::Tasks
 					}
 					else
 					{
-						Function();
+						// ~TPromise asserts the promise was fulfilled, so the non-threaded
+						// fallbacks have to set it rather than just running the work.
+						Promise.SetValue(Function());
 					}
 					break;
 
@@ -703,7 +862,9 @@ namespace UE::Tasks
 					}
 					else
 					{
-						Function();
+						// ~TPromise asserts the promise was fulfilled, so the non-threaded
+						// fallbacks have to set it rather than just running the work.
+						Promise.SetValue(Function());
 					}
 					break;
 #endif
@@ -715,14 +876,6 @@ namespace UE::Tasks
 					checkf(false, TEXT("Unhandled EAsyncExecution policy %d"), static_cast<int32>(Execution));
 				}
 			}
-
-			ENamedThreads::Type GetDesiredThread()
-			{
-				//This just schedules the unlock
-				return ENamedThreads::AnyThread;
-			}
-
-		private:
 
 			static bool IsSupportedExecutionPolicy(EAsyncExecution InExecution)
 			{
@@ -743,7 +896,7 @@ namespace UE::Tasks
 			}
 
 			TPromiseRef MyPromise;
-			TSharedRef<TPromiseState<TResultType>, ESPMode::ThreadSafe> PreviousPromise;
+			TPreviousRef PreviousPromise;
 
 			TRootFunction ContinuationFunction;
 
@@ -751,6 +904,35 @@ namespace UE::Tasks
 
 			ENamedThreads::Type DesiredThread;
 			EAsyncExecution Execution;
+			bool bInlineEligible;
+			std::atomic_bool ExecutionClaimed{ false };
+		};
+
+		// Waits on the upstream promise's completion event and hands off. Everything else - the
+		// payload, the policy, the run-once decision - lives in TContinuationState, which cancellation
+		// reaches without this task ever having to fire.
+		template<typename TStateType>
+		class TContinuationTask : public FAsyncGraphTaskBase
+		{
+		public:
+			TContinuationTask(const TSharedRef<TStateType, ESPMode::ThreadSafe>& InState)
+				: State(InState)
+			{
+			}
+
+			void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
+			{
+				State->RunFromUpstream();
+			}
+
+			ENamedThreads::Type GetDesiredThread()
+			{
+				//This just schedules the unlock
+				return ENamedThreads::AnyThread;
+			}
+
+		private:
+			TSharedRef<TStateType, ESPMode::ThreadSafe> State;
 		};
 	}
 
@@ -768,18 +950,48 @@ namespace UE::Tasks
 			using TParamResultType = TUnwrap_T<typename ContinuationFunctionTraits::ParamType>;
 			static_assert(std::is_same<ResultType, TParamResultType>::value, "Parameter of the continuation needs to have the same type as the previous return.");
 			
-			//Create promise
+			using TStateType = TContinuationState<Func, ResultType, TFutureType, Monitor>;
+
+			//Create promise. Grab the future before anything else, because from the bind below
+			//onwards the continuation may run and complete the promise synchronously.
 			TSharedRef<TAsyncPromise<TFutureType>> Promise = MakeShared<TAsyncPromise<TFutureType>>();
 			TAsyncFuture<TFutureType> Future = Promise->GetFuture();
 
-			//Make Scheduling task on the graphtask
-			FGraphEventArray Triggers{ PreviousPromise->GetCompletionEvent() };
-			TGraphTask<TContinuationTask<Func, ResultType, TFutureType, Monitor>>::CreateTask(&Triggers).ConstructAndDispatchWhenReady(
-				Forward<Func>(Function), 
-				MoveTemp(Promise), 
+			TSharedRef<TStateType, ESPMode::ThreadSafe> State = MakeShared<TStateType, ESPMode::ThreadSafe>(
+				Forward<Func>(Function),
+				MoveTemp(Promise),
 				PreviousPromise,
 				MoveTemp(LifetimeMonitor),
 				Options);
+
+			//Bind before scheduling. Bound afterwards, a task that won the race would run the body
+			//with the upstream's live value instead of a cancelled one. If the handle is already
+			//cancelled, Bind runs the cancelled continuation before it returns.
+			if (!State->IsExecuted())
+			{
+				const TOptional<FCancellationHandle>& Cancellation = Options.GetCancellation();
+				if (Cancellation.IsSet())
+				{
+					FCancellationHandle Handle = Cancellation.GetValue();
+					Handle.Bind(State);
+				}
+			}
+
+			if (!State->IsExecuted())
+			{
+				if (PreviousPromise->IsSet())
+				{
+					//Nothing to wait for, so skip the scheduling task entirely. Whether the work
+					//actually runs here or gets dispatched is ExecuteWith's call, not ours.
+					State->RunFromUpstream();
+				}
+				else
+				{
+					//Make Scheduling task on the graphtask
+					FGraphEventArray Triggers{ PreviousPromise->GetCompletionEvent() };
+					TGraphTask<TContinuationTask<TStateType>>::CreateTask(&Triggers).ConstructAndDispatchWhenReady(State);
+				}
+			}
 
 			//return future
 			return Future;

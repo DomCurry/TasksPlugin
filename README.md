@@ -18,6 +18,8 @@ This is the first asynchronous component. Epic does have a `TPromise` type which
 This is the other side of the coin to the `TAsyncPromise` again with the threadsafe and copyable traits. 
 ### Continuations
 A continuation is a key part of this plugin, allowing us to easily specify a unit of logic to be performed when - at some future time - the promise is fulfilled and the result delivered. This pattern establishes this through a `.Then` call on any `TAsyncFuture` which in turn will generate its own `TAsyncFuture` of the corresponding result of that chained future work.
+
+**`.Then` on an already-resolved future runs synchronously**, before `.Then` returns, rather than costing a scheduler hop to reach a decision that is already made. This applies only when the continuation expressed no preference about where it runs — `EAsyncExecution::TaskGraph` with no thread named. Naming any thread (including a priority class like `AnyBackgroundThreadNormalTask`) or choosing another execution policy dispatches as before. `Async()` always dispatches: its upstream is an already-resolved future by construction, so it opts out explicitly via `FOptions::RequireAsync()` to stay true to its name. Deeply nested inline chains fall back to dispatching past a fixed depth, so a self-chaining continuation cannot exhaust the stack.
 ### Combinations
 This plugin also supports splitting and converging chains of futures to better marshall the work required. This is achieved through `WhenAll` and `WhenAny` functions - each of which produce their own `TAsyncFuture`.
 ### Cancellation
@@ -35,6 +37,13 @@ Cancellation is also how an object owns its tasks: hold an `FCancellationHandle`
 ```
 
 Store it as a member, not a local.
+
+**Cancelling runs continuations rather than skipping them.** `Cancel()` does not complete the bound promises itself; it runs each bound continuation immediately, handing it a cancelled `TResult` instead of whatever the upstream would have produced. The continuation is the only thing that completes the promise, which is what guarantees a downstream `.Then` never observes the result before the continuation that produced it has run. Two consequences worth knowing:
+
+- A cancelled continuation does **not** wait for its upstream — it runs straight away, even if that upstream never resolves at all.
+- A `TResult`-taking continuation sees `Result.IsCancelled()` and decides what to propagate. Returning the result passes the cancellation on; returning a plain value deliberately overrides it.
+
+`Cancel()` therefore runs work on the calling thread where the continuation's `FOptions` allow it (`EAsyncExecution::TaskGraph` with no thread named). Name a thread, or pick another execution policy, if a continuation must not run on whichever thread calls `Cancel()`. Handle destruction always dispatches instead of running inline, so teardown never runs user code.
 ### Lifetime Monitoring
 A common use for the cancellation of a promise is that the object that has initiated the work has since been destroyed. In those cases this plugin provides a neat conversion for `UObject*` and `TSharedFromThis` types, that will remove the boilerplate of the weak pointer capture and pinning of the owning object inside the continuation logic.
 
